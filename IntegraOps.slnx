@@ -1,0 +1,12 @@
+<Solution>
+  <Folder Name="/backend/src/">
+    <Project Path="backend/src/IntegraOps.Domain/IntegraOps.Domain.csproj" />
+    <Project Path="backend/src/IntegraOps.Application/IntegraOps.Application.csproj" />
+    <Project Path="backend/src/IntegraOps.Infrastructure/IntegraOps.Infrastructure.csproj" />
+    <Project Path="backend/src/IntegraOps.Api/IntegraOps.Api.csproj" />
+    <Project Path="backend/src/IntegraOps.Worker/IntegraOps.Worker.csproj" />
+  </Folder>
+  <Folder Name="/backend/tests/">
+    <Project Path="backend/tests/IntegraOps.Tests/IntegraOps.Tests.csproj" />
+  </Folder>
+</Solution>

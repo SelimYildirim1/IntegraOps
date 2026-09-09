@@ -1,0 +1,80 @@
+name: integraops
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: integraops
+      POSTGRES_DB: integraops
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Run python3 scripts/init_local.py}
+    ports:
+      - "127.0.0.1:${POSTGRES_PORT:-54329}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U integraops -d integraops"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  rabbitmq:
+    image: rabbitmq:4-management
+    environment:
+      RABBITMQ_DEFAULT_USER: integraops
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:?Run python3 scripts/init_local.py}
+    ports:
+      - "127.0.0.1:${RABBITMQ_PORT:-56729}:5672"
+      - "127.0.0.1:${RABBITMQ_MANAGEMENT_PORT:-15679}:15672"
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 24
+
+  migrate:
+    build:
+      context: .
+      dockerfile: deploy/docker/Dockerfile
+      target: api
+    command: ["--migrate"]
+    environment:
+      ConnectionStrings__Postgres: "Host=postgres;Database=integraops;Username=integraops;Password=${POSTGRES_PASSWORD};Timeout=5;Command Timeout=15;GSS Encryption Mode=Disable"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
+  api:
+    build:
+      context: .
+      dockerfile: deploy/docker/Dockerfile
+      target: api
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      ConnectionStrings__Postgres: "Host=postgres;Database=integraops;Username=integraops;Password=${POSTGRES_PASSWORD};Timeout=5;Command Timeout=15;GSS Encryption Mode=Disable"
+      Bootstrap__Key: ${BOOTSTRAP_KEY:?Run python3 scripts/init_local.py}
+    ports:
+      - "127.0.0.1:${API_PORT:-8080}:8080"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+
+  worker:
+    build:
+      context: .
+      dockerfile: deploy/docker/Dockerfile
+      target: worker
+    environment:
+      ConnectionStrings__Postgres: "Host=postgres;Database=integraops;Username=integraops;Password=${POSTGRES_PASSWORD};Timeout=5;Command Timeout=15;GSS Encryption Mode=Disable"
+      RabbitMQ__Uri: "amqp://integraops:${RABBITMQ_PASSWORD}@rabbitmq:5672/"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      rabbitmq:
+        condition: service_healthy
+
+volumes:
+  postgres_data:
+  rabbitmq_data:
