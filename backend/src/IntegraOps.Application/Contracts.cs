@@ -16,23 +16,13 @@ public sealed record ValidatedEvent(
 public sealed record EventReceipt(
     Guid EventId, Guid TransactionRecordId, bool Duplicate, DateTimeOffset AcceptedAt);
 public sealed record DelayView(
-    string State,
-    string? Step,
-    DateTimeOffset? StartedAt,
-    DateTimeOffset? DeadlineAt,
-    DateTimeOffset? CheckedAt
-);
+    string State, string? Step, DateTimeOffset? StartedAt,
+    DateTimeOffset? DeadlineAt, DateTimeOffset? CheckedAt);
 public sealed record TransactionView(
-    Guid Id,
-    string Flow,
-    string TransactionId,
-    TransactionStatus Status,
-    int AcceptedEventCount,
-    int ProcessedEventCount,
-    IReadOnlyList<TimelineStep> Steps,
-    IReadOnlyList<ObservedEvent> Events,
-    DelayView? Delay = null
-);
+    Guid Id, string Flow, string TransactionId, TransactionStatus Status,
+    int AcceptedEventCount, int ProcessedEventCount,
+    IReadOnlyList<TimelineStep> Steps, IReadOnlyList<ObservedEvent> Events,
+    DelayView? Delay = null);
 
 public interface ITrackingStore
 {

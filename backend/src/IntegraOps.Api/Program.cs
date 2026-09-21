@@ -4,6 +4,9 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using IntegraOps.Application;
 using IntegraOps.Infrastructure;
+using IntegraOps.Api;
+using System.Threading.RateLimiting;
+using Microsoft.AspNetCore.RateLimiting;
 using Npgsql;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -11,11 +14,22 @@ builder.WebHost.ConfigureKestrel(options => options.Limits.MaxRequestBodySize = 
 builder.Services.ConfigureHttpJsonOptions(options =>
     options.SerializerOptions.Converters.Add(new JsonStringEnumConverter(JsonNamingPolicy.CamelCase, allowIntegerValues: false)));
 builder.Services.AddProblemDetails();
+builder.Services.AddPilot(builder.Configuration);
+builder.Services.AddRateLimiter(options =>
+{
+    options.RejectionStatusCode = 429;
+    options.AddPolicy("login", context => RateLimitPartition.GetFixedWindowLimiter(
+        context.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+        _ => new FixedWindowRateLimiterOptions { PermitLimit = 30, Window = TimeSpan.FromMinutes(1), QueueLimit = 0 }));
+});
 builder.Services.AddSingleton(TimeProvider.System);
 var connectionString = builder.Configuration.GetConnectionString("Postgres")
     ?? throw new InvalidOperationException("ConnectionStrings__Postgres gerekli.");
 builder.Services.AddSingleton(_ => NpgsqlDataSource.Create(connectionString));
 builder.Services.AddSingleton<ITrackingStore, PostgresTrackingStore>();
+builder.Services.AddSingleton<ITransactionQueries, PostgresTransactionQueries>();
+builder.Services.AddSingleton<IPanelQueries, PostgresPanelQueries>();
+builder.Services.AddSingleton<IFlowQueries, PostgresFlowQueries>();
 
 var app = builder.Build();
 if (args.Contains("--migrate", StringComparer.Ordinal))
@@ -34,6 +48,10 @@ app.UseExceptionHandler();
 app.Use(async (context, next) =>
 {
     try { await next(context); }
+    catch (PilotHttpException ex)
+    {
+        await Results.Problem(statusCode: ex.Status, title: ex.Message).ExecuteAsync(context);
+    }
     catch (RequestValidationException ex)
     {
         await Results.ValidationProblem(ex.Errors).ExecuteAsync(context);
@@ -53,38 +71,37 @@ app.Use(async (context, next) =>
             .ExecuteAsync(context);
     }
 });
+app.UseRateLimiter();
 
 app.MapGet("/health/live", () => Results.Ok(new { status = "alive" }));
 app.MapGet("/health/ready", async (NpgsqlDataSource dataSource, CancellationToken ct) =>
 {
-    await using var command = dataSource.CreateCommand("SELECT 1 FROM schema_migrations WHERE version = 2");
+    await using var command = dataSource.CreateCommand("SELECT 1 FROM schema_migrations WHERE version = 3");
     return await command.ExecuteScalarAsync(ct) is null
         ? Results.Problem(statusCode: 503, title: "Migration gerekli.")
         : Results.Ok(new { status = "ready" });
 });
 
-// Development provisioning only. A production tenant/user administration flow is a later milestone.
-app.MapPost("/api/v1/bootstrap/projects", async (HttpContext context, CreateProjectRequest request,
-    ITrackingStore store, CancellationToken ct) =>
+bool BootstrapValid(HttpContext context)
 {
     var supplied = context.Request.Headers["X-Bootstrap-Key"].ToString();
-    if (supplied.Length is < 32 or > 512 ||
-        !CryptographicOperations.FixedTimeEquals(SHA256.HashData(Encoding.UTF8.GetBytes(supplied)), expectedBootstrapHash))
+    return supplied.Length is >= 32 and <= 512 && CryptographicOperations.FixedTimeEquals(
+        SHA256.HashData(Encoding.UTF8.GetBytes(supplied)), expectedBootstrapHash);
+}
+
+// Initial setup closes after the first owner exists.
+app.MapPost("/api/v1/bootstrap/projects", async (HttpContext context, CreateProjectRequest request,
+    ITrackingStore store, PostgresIdentityStore identities, CancellationToken ct) =>
+{
+    if (!BootstrapValid(context))
         return Results.Problem(statusCode: 401, title: "Geçerli kurulum anahtarı gerekli.");
+    if (await identities.HasUsers(ct)) return Results.Problem(statusCode: 409, title: "Kurulum tamamlandı. Panelden proje oluşturun.");
     var project = await store.CreateProjectAsync(request, ct);
     return Results.Json(project, statusCode: 201);
 });
 
-var projectApi = app.MapGroup("/api/v1").AddEndpointFilter(async (invocation, next) =>
-{
-    var context = invocation.HttpContext;
-    var key = context.Request.Headers["X-API-Key"].ToString();
-    var store = context.RequestServices.GetRequiredService<ITrackingStore>();
-    var access = await store.AuthenticateAsync(key, context.RequestAborted);
-    if (access is null) return Results.Problem(statusCode: 401, title: "Geçerli proje API anahtarı gerekli.");
-    context.Items[typeof(ProjectAccess)] = access;
-    return await next(invocation);
-});
+var projectApi = app.MapGroup("/api/v1").AddEndpointFilter(PilotEndpoints.ProjectFilter);
+PilotEndpoints.Map(app, projectApi, BootstrapValid);
 
 projectApi.MapPost("/flows", async (HttpContext context, CreateFlowRequest request,
     ITrackingStore store, CancellationToken ct) =>
@@ -109,6 +126,46 @@ projectApi.MapGet("/flows/{flow}/transactions/{transactionId}", async (HttpConte
     var access = (ProjectAccess)context.Items[typeof(ProjectAccess)]!;
     var result = await store.GetTransactionAsync(access.ProjectId, flow, transactionId, ct);
     return result is null ? Results.Problem(statusCode: 404, title: "İşlem bu projede bulunamadı.") : Results.Ok(result);
+});
+
+projectApi.MapGet("/transactions", async (
+    HttpContext context,
+    ITransactionQueries queries,
+    string? flow,
+    string? status,
+    string? delay,
+    int? page,
+    int? pageSize,
+    CancellationToken ct) =>
+{
+    var access = (ProjectAccess)context.Items[typeof(ProjectAccess)]!;
+    var query = InputValidation.TransactionList(
+        flow, status, delay, page ?? 1, pageSize ?? 20);
+    return Results.Ok(await queries.ListAsync(access.ProjectId, query, ct));
+});
+
+projectApi.MapGet("/flows", async (
+    HttpContext context, IPanelQueries queries, CancellationToken ct) =>
+{
+    var access = (ProjectAccess)context.Items[typeof(ProjectAccess)]!;
+    return Results.Ok(await queries.ListFlowsAsync(access.ProjectId, ct));
+});
+
+projectApi.MapGet("/transactions/summary", async (
+    HttpContext context, IPanelQueries queries, string? flow, CancellationToken ct) =>
+{
+    var access = (ProjectAccess)context.Items[typeof(ProjectAccess)]!;
+    return Results.Ok(await queries.GetSummaryAsync(access.ProjectId, flow, ct));
+});
+
+projectApi.MapGet("/flows/{flow}", async (
+    HttpContext context, IFlowQueries queries, string flow, CancellationToken ct) =>
+{
+    var access = (ProjectAccess)context.Items[typeof(ProjectAccess)]!;
+    var result = await queries.GetAsync(access.ProjectId, flow, ct);
+    return result is null
+        ? Results.Problem(statusCode: 404, title: "Akış bu projede bulunamadı.")
+        : Results.Ok(result);
 });
 
 await app.RunAsync();

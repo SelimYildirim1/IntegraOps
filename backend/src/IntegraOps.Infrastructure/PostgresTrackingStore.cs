@@ -137,96 +137,30 @@ public sealed class PostgresTrackingStore(NpgsqlDataSource dataSource) : ITracki
         return new EventReceipt(request.EventId, transactionId, false, new DateTimeOffset((DateTime)acceptedAt));
     }
 
-    public async Task<TransactionView?> GetTransactionAsync(
-    Guid projectId,
-    string flowCode,
-    string businessId,
-    CancellationToken ct)
-{
-    await using var connection =
-        await dataSource.OpenConnectionAsync(ct);
-
-    await using var transaction =
-        await connection.BeginTransactionAsync(
-            IsolationLevel.RepeatableRead, ct);
-
-    var flow = await LoadFlowAsync(
-        connection,
-        transaction,
-        projectId,
-        flowCode,
-        null,
-        ct);
-
-    if (flow is null)
-        return null;
-
-    await using var find = Sql.Command(
-        connection,
-        transaction,
-        """
-        SELECT id
-        FROM transactions
-        WHERE project_id = @projectId
-          AND flow_id = @flowId
-          AND business_id = @businessId
-        """,
-        ("projectId", projectId),
-        ("flowId", flow.Id),
-        ("businessId", businessId));
-
-    var foundId = await find.ExecuteScalarAsync(ct);
-
-    if (foundId is not Guid id)
-        return null;
-
-    var events = await LoadEventsAsync(
-        connection,
-        transaction,
-        projectId,
-        id,
-        ct);
-
-    await using var count = Sql.Command(
-        connection,
-        transaction,
-        """
-        SELECT count(*)
-        FROM transaction_events
-        WHERE project_id = @projectId
-          AND transaction_id = @id
-        """,
-        ("projectId", projectId),
-        ("id", id));
-
-    var acceptedCount =
-        checked((int)(long)(await count.ExecuteScalarAsync(ct))!);
-
-    var projection = TimelineProjector.Project(flow, events);
-
-    var delay = await PostgresDelayStore.ReadAsync(
-        connection,
-        transaction,
-        projectId,
-        id,
-        projection,
-        acceptedCount > events.Count,
-        ct);
-
-    await transaction.CommitAsync(ct);
-
-    return new TransactionView(
-        id,
-        flow.Code,
-        businessId,
-        projection.Status,
-        acceptedCount,
-        events.Count,
-        projection.Steps,
-        events,
-        delay
-    );
-}
+    public async Task<TransactionView?> GetTransactionAsync(Guid projectId, string flowCode, string businessId, CancellationToken ct)
+    {
+        await using var connection = await dataSource.OpenConnectionAsync(ct);
+        // Keep the accepted count, processed events and flow definition in one consistent snapshot.
+        await using var transaction = await connection.BeginTransactionAsync(IsolationLevel.RepeatableRead, ct);
+        var flow = await LoadFlowAsync(connection, transaction, projectId, flowCode, null, ct);
+        if (flow is null) return null;
+        await using var find = Sql.Command(connection, transaction, """
+            SELECT id FROM transactions WHERE project_id = @projectId AND flow_id = @flowId AND business_id = @businessId
+            """, ("projectId", projectId), ("flowId", flow.Id), ("businessId", businessId));
+        var foundId = await find.ExecuteScalarAsync(ct);
+        if (foundId is not Guid id) return null;
+        var events = await LoadEventsAsync(connection, transaction, projectId, id, ct);
+        await using var count = Sql.Command(connection, transaction,
+            "SELECT count(*) FROM transaction_events WHERE project_id = @projectId AND transaction_id = @id",
+            ("projectId", projectId), ("id", id));
+        var acceptedCount = checked((int)(long)(await count.ExecuteScalarAsync(ct))!);
+        var projection = TimelineProjector.Project(flow, events);
+        var delay = await PostgresDelayStore.ReadAsync(connection, transaction, projectId, id,
+            projection, acceptedCount > events.Count, ct);
+        await transaction.CommitAsync(ct);
+        return new TransactionView(id, flow.Code, businessId, projection.Status,
+            acceptedCount, events.Count, projection.Steps, events, delay);
+    }
 
     public async Task ProcessAsync(EventPointer pointer, CancellationToken ct)
     {
@@ -266,15 +200,7 @@ public sealed class PostgresTrackingStore(NpgsqlDataSource dataSource) : ITracki
             WHERE id = @id AND project_id = @projectId
             """, ("status", projection.Status.ToString()), ("id", transactionId), ("projectId", pointer.ProjectId)))
             await update.ExecuteNonQueryAsync(ct);
-
-        await PostgresDelayStore.RefreshAsync(
-            connection,
-            transaction,
-            flow,
-            transactionId,
-            projection,
-            ct);
-
+        await PostgresDelayStore.RefreshAsync(connection, transaction, flow, transactionId, projection, ct);
         await transaction.CommitAsync(ct);
     }
 

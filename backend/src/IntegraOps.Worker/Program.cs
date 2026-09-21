@@ -14,6 +14,9 @@ var rabbitUri = builder.Configuration["RabbitMQ:Uri"]
 builder.Services.AddSingleton(_ => NpgsqlDataSource.Create(connectionString));
 builder.Services.AddSingleton<PostgresTrackingStore>();
 builder.Services.AddSingleton<PostgresDelayStore>();
+builder.Services.AddPilot(builder.Configuration);
+builder.Services.AddHostedService<NotificationDispatcher>();
+builder.Services.AddHostedService<WorkerHeartbeat>();
 builder.Services.AddSingleton<OutboxDispatcher>();
 builder.Services.AddSingleton(new ConnectionFactory
 {

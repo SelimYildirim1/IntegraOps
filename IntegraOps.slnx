@@ -9,4 +9,7 @@
   <Folder Name="/backend/tests/">
     <Project Path="backend/tests/IntegraOps.Tests/IntegraOps.Tests.csproj" />
   </Folder>
+  <Folder Name="/samples/">
+    <Project Path="samples/OrderSource/OrderSource.csproj" />
+  </Folder>
 </Solution>

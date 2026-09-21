@@ -8,3 +8,9 @@
 *.user
 *.suo
 .DS_Store
+**/.env.local
+**/keys/
+backups/
+**/__pycache__/
+.verification/
+.env.live

@@ -1,0 +1,88 @@
+name: integraops-live
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: integraops
+      POSTGRES_DB: integraops
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Required}
+    volumes: ["postgres_data:/var/lib/postgresql/data"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U integraops -d integraops"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+  rabbitmq:
+    image: rabbitmq:4-management
+    restart: unless-stopped
+    environment:
+      RABBITMQ_DEFAULT_USER: integraops
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:?Required}
+    volumes: ["rabbitmq_data:/var/lib/rabbitmq"]
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 24
+  migrate:
+    build: { context: ., dockerfile: deploy/docker/Dockerfile, target: api }
+    command: ["--migrate"]
+    environment:
+      ConnectionStrings__Postgres: "Host=postgres;Database=integraops;Username=integraops;Password=${POSTGRES_PASSWORD};Timeout=5;Command Timeout=15"
+    depends_on: { postgres: { condition: service_healthy } }
+  api:
+    build: { context: ., dockerfile: deploy/docker/Dockerfile, target: api }
+    restart: unless-stopped
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      ConnectionStrings__Postgres: "Host=postgres;Database=integraops;Username=integraops;Password=${POSTGRES_PASSWORD};Timeout=5;Command Timeout=15"
+      Bootstrap__Key: ${BOOTSTRAP_KEY:?Required}
+      Notifications__WebhookOrigins: ${WEBHOOK_ORIGINS:-}
+    volumes: ["protection_keys:/var/lib/integraops/keys"]
+    depends_on: { migrate: { condition: service_completed_successfully } }
+  worker:
+    build: { context: ., dockerfile: deploy/docker/Dockerfile, target: worker }
+    restart: unless-stopped
+    environment:
+      ConnectionStrings__Postgres: "Host=postgres;Database=integraops;Username=integraops;Password=${POSTGRES_PASSWORD};Timeout=5;Command Timeout=15"
+      RabbitMQ__Uri: "amqp://integraops:${RABBITMQ_PASSWORD}@rabbitmq:5672/"
+      Notifications__WebhookOrigins: ${WEBHOOK_ORIGINS:-}
+      Notifications__RetryBaseSeconds: 30
+      Smtp__Host: ${SMTP_HOST:?Required}
+      Smtp__Port: ${SMTP_PORT:-587}
+      Smtp__StartTls: "true"
+      Smtp__From: ${SMTP_FROM:?Required}
+      Smtp__User: ${SMTP_USER:-}
+      Smtp__Password: ${SMTP_PASSWORD:-}
+    volumes: ["protection_keys:/var/lib/integraops/keys"]
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+      rabbitmq: { condition: service_healthy }
+  panel:
+    build: { context: ./frontend }
+    restart: unless-stopped
+    environment:
+      INTEGRAOPS_API_URL: http://api:8080
+      PANEL_COOKIE_SECURE: "true"
+    depends_on: [api]
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    environment:
+      PANEL_HOST: ${PANEL_HOST:?Required}
+      API_HOST: ${API_HOST:?Required}
+    ports: ["80:80", "443:443", "443:443/udp"]
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on: [panel, api]
+
+volumes:
+  postgres_data:
+  rabbitmq_data:
+  protection_keys:
+  caddy_data:
+  caddy_config:
