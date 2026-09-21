@@ -40,21 +40,26 @@ services:
       target: api
     command: ["--migrate"]
     environment:
-      ConnectionStrings__Postgres: "Host=postgres;Database=integraops;Username=integraops;Password=${POSTGRES_PASSWORD};Timeout=5;Command Timeout=15;GSS Encryption Mode=Disable"
+      ConnectionStrings__Postgres: "Host=postgres;Database=integraops;Username=integraops;Password=${POSTGRES_PASSWORD};Timeout=5;Command Timeout=15"
     depends_on:
       postgres:
         condition: service_healthy
     restart: "no"
 
   api:
+    restart: unless-stopped
     build:
       context: .
       dockerfile: deploy/docker/Dockerfile
       target: api
     environment:
       ASPNETCORE_ENVIRONMENT: Production
-      ConnectionStrings__Postgres: "Host=postgres;Database=integraops;Username=integraops;Password=${POSTGRES_PASSWORD};Timeout=5;Command Timeout=15;GSS Encryption Mode=Disable"
+      ConnectionStrings__Postgres: "Host=postgres;Database=integraops;Username=integraops;Password=${POSTGRES_PASSWORD};Timeout=5;Command Timeout=15"
       Bootstrap__Key: ${BOOTSTRAP_KEY:?Run python3 scripts/init_local.py}
+      Notifications__WebhookOrigins: ${WEBHOOK_ORIGINS:-http://webhook:8080}
+      Notifications__PrivateWebhookOrigins: ${PRIVATE_WEBHOOK_ORIGINS:-http://webhook:8080}
+    volumes:
+      - protection_keys:/var/lib/integraops/keys
     ports:
       - "127.0.0.1:${API_PORT:-8080}:8080"
     depends_on:
@@ -62,19 +67,88 @@ services:
         condition: service_completed_successfully
 
   worker:
+    restart: unless-stopped
     build:
       context: .
       dockerfile: deploy/docker/Dockerfile
       target: worker
     environment:
-      ConnectionStrings__Postgres: "Host=postgres;Database=integraops;Username=integraops;Password=${POSTGRES_PASSWORD};Timeout=5;Command Timeout=15;GSS Encryption Mode=Disable"
+      ConnectionStrings__Postgres: "Host=postgres;Database=integraops;Username=integraops;Password=${POSTGRES_PASSWORD};Timeout=5;Command Timeout=15"
       RabbitMQ__Uri: "amqp://integraops:${RABBITMQ_PASSWORD}@rabbitmq:5672/"
+      Notifications__WebhookOrigins: ${WEBHOOK_ORIGINS:-http://webhook:8080}
+      Notifications__PrivateWebhookOrigins: ${PRIVATE_WEBHOOK_ORIGINS:-http://webhook:8080}
+      Notifications__RetryBaseSeconds: 2
+      Smtp__Host: mailpit
+      Smtp__Port: 1025
+      Smtp__StartTls: "false"
+      Smtp__From: integraops@local.test
+    volumes:
+      - protection_keys:/var/lib/integraops/keys
     depends_on:
       migrate:
         condition: service_completed_successfully
       rabbitmq:
         condition: service_healthy
 
+  mailpit:
+    image: axllent/mailpit:latest
+    ports:
+      - "127.0.0.1:8025:8025"
+    volumes:
+      - mailpit_data:/data
+    environment:
+      MP_DATABASE: /data/mailpit.db
+      MP_MAX_MESSAGES: 1000
+
+  webhook:
+    image: python:3.13-alpine
+    command: ["python", "-u", "/app/receiver.py"]
+    environment:
+      WEBHOOK_SECRET: ${LOCAL_WEBHOOK_SECRET:?Run python3 scripts/prepare_v1.py}
+    volumes:
+      - ./samples/webhook/receiver.py:/app/receiver.py:ro
+      - webhook_data:/data
+    ports:
+      - "127.0.0.1:8082:8080"
+
+  source-postgres:
+    image: postgres:17-alpine
+    profiles: [demo]
+    environment:
+      POSTGRES_USER: source
+      POSTGRES_DB: source
+      POSTGRES_PASSWORD: ${SOURCE_POSTGRES_PASSWORD:?Run python3 scripts/prepare_v1.py}
+    volumes:
+      - source_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U source -d source"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  source:
+    profiles: [demo]
+    build:
+      context: .
+      dockerfile: deploy/docker/Dockerfile
+      target: source
+    environment:
+      ConnectionStrings__Postgres: "Host=source-postgres;Database=source;Username=source;Password=${SOURCE_POSTGRES_PASSWORD};Timeout=5;Command Timeout=15"
+      IntegraOps__Url: http://api:8080
+      IntegraOps__Key: ${SOURCE_API_KEY:-not-configured}
+      IntegraOps__Flow: pilot-source
+    ports:
+      - "127.0.0.1:8081:8080"
+    depends_on:
+      source-postgres:
+        condition: service_healthy
+      api:
+        condition: service_started
+
 volumes:
   postgres_data:
   rabbitmq_data:
+  protection_keys:
+  mailpit_data:
+  webhook_data:
+  source_data:

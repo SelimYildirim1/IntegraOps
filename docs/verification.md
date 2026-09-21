@@ -22,3 +22,18 @@ Derleme ortamı: Linux x64, .NET SDK 10.0.400, hedef net10.0. Bu çalışma orta
 Testler olayların ters sırada gelişi, eski hatanın geç gelmesi, daha yeni hata, gözlenmeyen adımın başarısız sayılmaması, henüz işlenmemiş kayıt, aynı zaman damgasının kararlı değerlendirilmesi, saat dilimi, gelecekteki zaman, geçersiz durum, eksik olay kimliği ve hatalı akış tanımlarını kapsar. Veritabanı üzerinde tekilleştirme, eşzamanlılık ve proje ayrımı kontrolleri bütünleşik doğrulama betiğinde bulunur; bunlar bu teslimde geçmiş testler olarak raporlanmamaktadır.
 
 Kaynak kod ve ilk backend kuralları hazırdır. PostgreSQL ve RabbitMQ ile çalışan bütün akışın onayı, yerel Docker doğrulamasının ardından verilebilir. Sonraki özellik çalışmasına geçmeden önce README'deki üç başlangıç komutu uygulanmalıdır.
+
+## V1 kurulumu — 17.09.2026
+
+| Kontrol | Sonuç |
+|---|---|
+| `dotnet build IntegraOps.slnx -c Release` | 0 hata, 0 uyarı |
+| `dotnet test` | 51 test geçti |
+| Panel `npm run typecheck` ve `npm run build` | Geçti, 13 rota |
+| `python3 scripts/verify_v1.py --load 100` | 28 kontrol geçti |
+| Migration 003_pilot | Uygulandı (schema_migrations: 1, 2, 3) |
+| Elle senaryo (OrderSource → alarm → fatura) | Alarm açıldı ve kapandı |
+| Mailpit / webhook alıcısı | Açılış ve kapanış bildirimleri ulaştı |
+| `scripts/backup_local.sh` + `scripts/check_restore.sh` | Geri yükleme başarılı (113 işlem, 8 alarm, 3 kullanıcı) |
+
+Yapılmayanlar: `--faults` kesinti denemesi, canlı ortam (DNS/TLS/SMTP) provası.

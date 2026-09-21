@@ -6,3 +6,9 @@
 .local
 .vs
 .idea
+frontend/
+backups/
+**/.env*
+**/keys/
+**/__pycache__/
+.verification/
