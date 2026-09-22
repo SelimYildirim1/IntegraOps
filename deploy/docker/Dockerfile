@@ -6,6 +6,14 @@ RUN dotnet publish backend/src/IntegraOps.Worker/IntegraOps.Worker.csproj -c Rel
 RUN dotnet publish samples/OrderSource/OrderSource.csproj -c Release -o /out/source
 
 FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS api
+ARG APP_VERSION=dev
+ARG APP_REVISION=unknown
+# The running version and commit are reported by /health/version and on every metric.
+ENV APP_VERSION=$APP_VERSION APP_REVISION=$APP_REVISION
+LABEL org.opencontainers.image.source="https://github.com/SelimYildirim1/IntegraOps" \
+      org.opencontainers.image.version="$APP_VERSION" \
+      org.opencontainers.image.revision="$APP_REVISION" \
+      org.opencontainers.image.title="integraops-api"
 WORKDIR /app
 COPY --from=build /out/api .
 RUN mkdir -p /var/lib/integraops/keys && chown -R app:app /var/lib/integraops
@@ -16,6 +24,14 @@ EXPOSE 8080
 ENTRYPOINT ["dotnet", "IntegraOps.Api.dll"]
 
 FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS worker
+ARG APP_VERSION=dev
+ARG APP_REVISION=unknown
+# The running version and commit are reported by /health/version and on every metric.
+ENV APP_VERSION=$APP_VERSION APP_REVISION=$APP_REVISION
+LABEL org.opencontainers.image.source="https://github.com/SelimYildirim1/IntegraOps" \
+      org.opencontainers.image.version="$APP_VERSION" \
+      org.opencontainers.image.revision="$APP_REVISION" \
+      org.opencontainers.image.title="integraops-worker"
 WORKDIR /app
 COPY --from=build /out/worker .
 RUN mkdir -p /var/lib/integraops/keys && chown -R app:app /var/lib/integraops
@@ -24,6 +40,14 @@ USER app
 ENTRYPOINT ["dotnet", "IntegraOps.Worker.dll"]
 
 FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS source
+ARG APP_VERSION=dev
+ARG APP_REVISION=unknown
+# The running version and commit are reported by /health/version and on every metric.
+ENV APP_VERSION=$APP_VERSION APP_REVISION=$APP_REVISION
+LABEL org.opencontainers.image.source="https://github.com/SelimYildirim1/IntegraOps" \
+      org.opencontainers.image.version="$APP_VERSION" \
+      org.opencontainers.image.revision="$APP_REVISION" \
+      org.opencontainers.image.title="integraops-source"
 WORKDIR /app
 COPY --from=build /out/source .
 USER app

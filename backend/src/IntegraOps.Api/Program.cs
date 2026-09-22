@@ -8,6 +8,8 @@ using IntegraOps.Api;
 using System.Threading.RateLimiting;
 using Microsoft.AspNetCore.RateLimiting;
 using Npgsql;
+using OpenTelemetry.Metrics;
+using OpenTelemetry.Trace;
 
 var builder = WebApplication.CreateBuilder(args);
 builder.WebHost.ConfigureKestrel(options => options.Limits.MaxRequestBodySize = 64 * 1024);
@@ -30,6 +32,12 @@ builder.Services.AddSingleton<ITrackingStore, PostgresTrackingStore>();
 builder.Services.AddSingleton<ITransactionQueries, PostgresTransactionQueries>();
 builder.Services.AddSingleton<IPanelQueries, PostgresPanelQueries>();
 builder.Services.AddSingleton<IFlowQueries, PostgresFlowQueries>();
+builder.Services.AddSingleton<HealthMetricsCollector>();
+builder.Services.AddHostedService(sp => sp.GetRequiredService<HealthMetricsCollector>());
+builder.Services.AddIntegraOpsTelemetry(builder.Configuration, "api",
+    metrics: m => m.AddAspNetCoreInstrumentation(),
+    // Health probes are frequent and carry no user traffic.
+    traces: t => t.AddAspNetCoreInstrumentation(o => o.Filter = c => !c.Request.Path.StartsWithSegments("/health")));
 
 var app = builder.Build();
 if (args.Contains("--migrate", StringComparer.Ordinal))
@@ -74,6 +82,7 @@ app.Use(async (context, next) =>
 app.UseRateLimiter();
 
 app.MapGet("/health/live", () => Results.Ok(new { status = "alive" }));
+app.MapGet("/health/version", () => Results.Ok(new { version = IntegraOpsMetrics.Version, revision = IntegraOpsMetrics.Revision }));
 app.MapGet("/health/ready", async (NpgsqlDataSource dataSource, CancellationToken ct) =>
 {
     await using var command = dataSource.CreateCommand("SELECT 1 FROM schema_migrations WHERE version = 3");
@@ -116,6 +125,7 @@ projectApi.MapPost("/events", async (HttpContext context, SubmitEventRequest req
     var access = (ProjectAccess)context.Items[typeof(ProjectAccess)]!;
     var validated = InputValidation.Event(request, timeProvider.GetUtcNow());
     var receipt = await store.AcceptAsync(access.ProjectId, validated, ct);
+    IntegraOpsMetrics.EventsAccepted.Add(1, new KeyValuePair<string, object?>("duplicate", receipt.Duplicate));
     var location = $"/api/v1/flows/{validated.Flow}/transactions/{validated.TransactionId}";
     return receipt.Duplicate ? Results.Ok(receipt) : Results.Accepted(location, receipt);
 });

@@ -28,11 +28,13 @@ public sealed class DelayMonitor(PostgresDelayStore store, IConfiguration config
                     {
                         count = await store.CheckDueAsync(batchSize, stoppingToken);
                     } while (count == batchSize && !stoppingToken.IsCancellationRequested);
+                    IntegraOpsMetrics.DelayScanSucceeded(DateTimeOffset.UtcNow);
                 }
                 catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { break; }
                 catch (Exception ex)
                 {
                     // Do not stop event consumption because one delay scan failed.
+                    IntegraOpsMetrics.DelayScans.Add(1, new KeyValuePair<string, object?>("outcome", "error"));
                     logger.LogWarning("Gecikme kontrolü tamamlanamadı ({ErrorType}); yeniden denenecek.",
                         ex.GetType().Name);
                 }

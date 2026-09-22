@@ -4,7 +4,7 @@ import { ApiError, apiMessage, getTransaction } from "@/lib/api";
 import type { DelayInfo, TransactionDetail } from "@/lib/types";
 import { Badge, DeadlineMeter, Message, number, PageHead, Time } from "@/components/ui";
 import RefreshControls from "@/components/refresh-controls";
-import { elapsedBetween, spanText } from "@/lib/time";
+import { elapsedBetween, spanText, stepTiming } from "@/lib/time";
 
 export const dynamic = "force-dynamic";
 
@@ -51,7 +51,7 @@ export default async function Detail({ params }: {
             const dot = step.observation === "completed" ? "completed" : step.observation === "failed" ? "failed" : isExpected ? `expected ${delay.state}` : "";
             const line = step.observation === "completed" ? "done" : isExpected ? "dashed" : "";
             const took = previous && step.occurredAt ? elapsedBetween(previous.occurredAt, step.occurredAt) : null;
-            const gapTone = took !== null && step.maxDelaySeconds !== null ? (took > step.maxDelaySeconds ? "late" : "ok") : "";
+            const timing = took !== null && step.maxDelaySeconds !== null ? stepTiming(took, step.maxDelaySeconds) : null;
             return <li key={step.code}>
               <div className="mark"><span className={`dot ${dot}`}>{step.observation === "completed" ? "✓" : step.observation === "failed" ? "!" : index + 1}</span><span className={`line ${line}`} /></div>
               <div className="step">
@@ -60,8 +60,8 @@ export default async function Detail({ params }: {
                   {step.occurredAt && <Time value={step.occurredAt} />}</div>
                 {step.maxDelaySeconds === null
                   ? <span className="gap">Başlangıç adımı</span>
-                  : took !== null
-                    ? <span className={`gap ${gapTone}`}>{spanText(took)} sonra geldi, {spanText(step.maxDelaySeconds)} tanınmıştı</span>
+                  : timing
+                    ? <span className={`gap ${timing.tone}`}>{timing.text}</span>
                     : isExpected
                       ? <DeadlineMeter startedAt={delay.startedAt} deadlineAt={delay.deadlineAt} state={delay.state} />
                       : <span className="gap">{spanText(step.maxDelaySeconds)} tanınan süre</span>}

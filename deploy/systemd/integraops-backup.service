@@ -1,0 +1,11 @@
+[Unit]
+Description=IntegraOps live backup (database, keys, off-site copy)
+Wants=network-online.target docker.service
+After=network-online.target docker.service
+
+[Service]
+Type=oneshot
+# Adjust to the checkout directory on the live host.
+WorkingDirectory=/opt/integraops
+ExecStart=/usr/bin/bash scripts/live/backup.sh
+# A failed run leaves the last-success metric unchanged, so IntegraOpsBackupStale fires after 26 h.

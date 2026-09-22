@@ -31,4 +31,5 @@ builder.Services.AddSingleton(new ConnectionFactory
 builder.Services.AddHostedService<OutboxPublisher>();
 builder.Services.AddHostedService<EventConsumer>();
 builder.Services.AddHostedService<DelayMonitor>();
+builder.Services.AddIntegraOpsTelemetry(builder.Configuration, "worker");
 await builder.Build().RunAsync();

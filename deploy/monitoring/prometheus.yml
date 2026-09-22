@@ -1,0 +1,36 @@
+# IntegraOps monitoring. API and worker push metrics with OpenTelemetry (OTLP/HTTP) to
+# Prometheus's OTLP receiver (--web.enable-otlp-receiver). Infrastructure is scraped.
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+otlp:
+  # Keep release and environment on every IntegraOps series so a regression can be tied to a version.
+  promote_resource_attributes: [service.version, deployment.environment.name]
+
+storage:
+  tsdb:
+    # OTLP pushes may arrive slightly out of order after a restart.
+    out_of_order_time_window: 10m
+
+rule_files: [/etc/prometheus/alerts.yml]
+
+alerting:
+  alertmanagers:
+    - static_configs: [{ targets: ["alertmanager:9093"] }]
+
+scrape_configs:
+  - job_name: prometheus
+    static_configs: [{ targets: ["localhost:9090"] }]
+  - job_name: alertmanager
+    static_configs: [{ targets: ["alertmanager:9093"] }]
+  - job_name: node
+    static_configs: [{ targets: ["node-exporter:9100"] }]
+  - job_name: rabbitmq
+    static_configs: [{ targets: ["rabbitmq:15692"] }]
+  # Per-queue depth and consumer counts; aggregated /metrics has no queue label.
+  - job_name: rabbitmq-queues
+    metrics_path: /metrics/detailed
+    params:
+      family: [queue_coarse_metrics, queue_consumer_count]
+    static_configs: [{ targets: ["rabbitmq:15692"] }]

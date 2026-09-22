@@ -39,3 +39,18 @@ export function elapsedBetween(from: string | null, to: string | null) {
   if (!Number.isFinite(a) || !Number.isFinite(b)) return null;
   return (b - a) / 1000;
 }
+
+// İş olaylarının zaman farkını gösterir; ağdaki teslim sırasını ölçmez.
+export function stepTiming(seconds: number, allowance: number): { tone: string; text: string } {
+  if (seconds < 0) {
+    const difference = -seconds < 1 ? "1 saniyeden az" : spanText(-seconds);
+    return {
+      tone: "late",
+      text: `Zaman sırası tutarsız: bu adımın olay zamanı önceki adımdan ${difference} önce. Kaynak olay zamanlarını kontrol edin.`,
+    };
+  }
+  return {
+    tone: seconds > allowance ? "late" : "ok",
+    text: `${spanText(seconds)} sonra gerçekleşti, ${spanText(allowance)} tanınmıştı`,
+  };
+}

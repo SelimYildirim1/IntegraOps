@@ -36,8 +36,11 @@ def main():
     current = read_env(path)
     if not all(current.get(k) for k in ("POSTGRES_PASSWORD", "RABBITMQ_PASSWORD", "BOOTSTRAP_KEY")):
         raise SystemExit("Mevcut .env bulunamadı veya eksik. İlk kurulumdaki scripts/init_local.py dosyasını kullanın.")
-    defaults = {"LOCAL_WEBHOOK_SECRET": secrets.token_hex(32), "SOURCE_POSTGRES_PASSWORD": secrets.token_hex(24)}
+    defaults = {"LOCAL_WEBHOOK_SECRET": secrets.token_hex(32), "SOURCE_POSTGRES_PASSWORD": secrets.token_hex(24),
+        "GRAFANA_ADMIN_PASSWORD": secrets.token_urlsafe(18)}
     update_env(path, {k: v for k, v in defaults.items() if not current.get(k)})
+    # node-exporter reads backup freshness files from here (compose.monitoring.yml).
+    (ROOT / ".local" / "metrics").mkdir(parents=True, exist_ok=True)
     panel = ROOT / "frontend" / ".env.local"
     if panel.parent.exists():
         config = read_env(panel)

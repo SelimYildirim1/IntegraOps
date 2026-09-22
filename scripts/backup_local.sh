@@ -11,4 +11,5 @@ if docker compose --profile demo ps --status running --services | grep -qx sourc
 fi
 test -s "$backup_dir/integraops.dump"
 test -s "$backup_dir/protection-keys.tar.gz"
+bash scripts/write_backup_metric.sh .local/metrics "$backup_dir"
 echo "Yedek hazır: $backup_dir"

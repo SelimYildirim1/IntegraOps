@@ -162,7 +162,8 @@ public sealed class PostgresTrackingStore(NpgsqlDataSource dataSource) : ITracki
             acceptedCount, events.Count, projection.Steps, events, delay);
     }
 
-    public async Task ProcessAsync(EventPointer pointer, CancellationToken ct)
+    /// <returns>The API acceptance time when this call processed the event; null for a harmless redelivery.</returns>
+    public async Task<DateTimeOffset?> ProcessAsync(EventPointer pointer, CancellationToken ct)
     {
         await using var connection = await dataSource.OpenConnectionAsync(ct);
         await using var transaction = await connection.BeginTransactionAsync(ct);
@@ -180,16 +181,19 @@ public sealed class PostgresTrackingStore(NpgsqlDataSource dataSource) : ITracki
             flowId = reader.GetGuid(1);
         }
 
+        DateTimeOffset receivedAt;
         await using (var apply = Sql.Command(connection, transaction, """
             UPDATE transaction_events SET processed_at = clock_timestamp()
             WHERE project_id = @projectId AND event_id = @eventId AND processed_at IS NULL
+            RETURNING received_at
             """, ("projectId", pointer.ProjectId), ("eventId", pointer.EventId)))
         {
-            if (await apply.ExecuteNonQueryAsync(ct) == 0)
+            if (await apply.ExecuteScalarAsync(ct) is not DateTime received)
             {
                 await transaction.CommitAsync(ct);
-                return; // Publisher/consumer redelivery is harmless.
+                return null; // Publisher/consumer redelivery is harmless.
             }
+            receivedAt = new DateTimeOffset(DateTime.SpecifyKind(received, DateTimeKind.Utc));
         }
         var flow = await LoadFlowAsync(connection, transaction, pointer.ProjectId, null, flowId, ct)
             ?? throw new InvalidDataException("Akış kaydı bulunamadı.");
@@ -202,6 +206,7 @@ public sealed class PostgresTrackingStore(NpgsqlDataSource dataSource) : ITracki
             await update.ExecuteNonQueryAsync(ct);
         await PostgresDelayStore.RefreshAsync(connection, transaction, flow, transactionId, projection, ct);
         await transaction.CommitAsync(ct);
+        return receivedAt;
     }
 
     internal static async Task<FlowDefinition?> LoadFlowAsync(NpgsqlConnection connection, NpgsqlTransaction transaction,

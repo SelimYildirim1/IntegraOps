@@ -4,6 +4,9 @@
     <ProjectReference Include="../IntegraOps.Application/IntegraOps.Application.csproj" />
     <PackageReference Include="Npgsql" />
     <PackageReference Include="RabbitMQ.Client" />
+    <PackageReference Include="OpenTelemetry.Extensions.Hosting" />
+    <PackageReference Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" />
+    <PackageReference Include="OpenTelemetry.Instrumentation.Http" />
     <EmbeddedResource Include="Migrations/*.sql" />
   </ItemGroup>
 </Project>
