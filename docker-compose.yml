@@ -87,6 +87,8 @@ services:
       Notifications__WebhookOrigins: ${WEBHOOK_ORIGINS:-http://webhook:8080}
       Notifications__PrivateWebhookOrigins: ${PRIVATE_WEBHOOK_ORIGINS:-http://webhook:8080}
       Notifications__RetryBaseSeconds: 2
+      Outbox__BatchSize: ${OUTBOX_BATCH_SIZE:-50}
+      EventConsumer__Concurrency: ${EVENT_CONSUMER_CONCURRENCY:-1}
       Smtp__Host: mailpit
       Smtp__Port: 1025
       Smtp__StartTls: "false"

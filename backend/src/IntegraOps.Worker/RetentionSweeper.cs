@@ -20,7 +20,11 @@ public sealed class RetentionSweeper(NpgsqlDataSource source, IConfiguration con
         using var timer = new PeriodicTimer(interval);
         do
         {
-            try { await SweepAllAsync(stoppingToken); }
+            try
+            {
+                await using var job = await JobLock.TryAcquire(source, "retention", stoppingToken);
+                if (job is not null) await SweepAllAsync(stoppingToken);
+            }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { break; }
             catch (Exception ex) { logger.LogWarning("Saklama süpürmesi tamamlanamadı ({ErrorType}); bir sonraki turda yeniden denenecek.", ex.GetType().Name); }
         } while (await WaitAsync(timer, stoppingToken));
@@ -41,6 +45,22 @@ public sealed class RetentionSweeper(NpgsqlDataSource source, IConfiguration con
                 """, ct);
         foreach (var p in policies)
             await SweepProjectAsync((Guid)p["project_id"]!, p["finished_transaction_days"] as int?, p["notification_days"] as int?, p["audit_days"] as int?, ct);
+        await SweepOutboxAsync(ct);
+    }
+
+    /// <summary>Published outbox rows are only a delivery ledger; they are dropped after 7 days in bounded batches.</summary>
+    public async Task<int> SweepOutboxAsync(CancellationToken ct)
+    {
+        var total = 0;
+        await using var c = await source.OpenConnectionAsync(ct);
+        while (true)
+        {
+            var n = await Run(c, null, """
+                DELETE FROM outbox_messages WHERE id IN (SELECT id FROM outbox_messages WHERE published_at < clock_timestamp()-interval '7 days' ORDER BY id LIMIT 5000)
+                """, ct);
+            total += n;
+            if (n < 5000) return total;
+        }
     }
 
     public async Task<(int Transactions, int Deliveries, int Audit)> SweepProjectAsync(Guid project, int? transactionDays, int? notificationDays, int? auditDays, CancellationToken ct)

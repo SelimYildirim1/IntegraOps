@@ -6,7 +6,7 @@ namespace IntegraOps.Infrastructure;
 public static class DatabaseMigrator
 {
     /// <summary>Highest migration this build expects; readiness checks require it.</summary>
-    public const int Latest = 11;
+    public const int Latest = 12;
 
     public static async Task ApplyAsync(NpgsqlDataSource dataSource, CancellationToken ct)
     {
@@ -22,7 +22,7 @@ public static class DatabaseMigrator
             await initialize.ExecuteNonQueryAsync(ct);
 
         (int Version, string File)[] migrations =
-            [(1, "001_initial.sql"), (2, "002_transaction_delays.sql"), (3, "003_pilot.sql"), (4, "004_operations.sql"), (5, "005_flow_versions.sql"), (6, "006_agents.sql"), (7, "007_reconciliation.sql"), (8, "008_reports.sql"), (9, "009_complex_flows.sql"), (10, "010_connections.sql"), (11, "011_organizations.sql")];
+            [(1, "001_initial.sql"), (2, "002_transaction_delays.sql"), (3, "003_pilot.sql"), (4, "004_operations.sql"), (5, "005_flow_versions.sql"), (6, "006_agents.sql"), (7, "007_reconciliation.sql"), (8, "008_reports.sql"), (9, "009_complex_flows.sql"), (10, "010_connections.sql"), (11, "011_organizations.sql"), (12, "012_scale.sql")];
         foreach (var migration in migrations)
         {
             await using var exists = Sql.Command(connection, transaction,

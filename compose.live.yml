@@ -43,6 +43,7 @@ services:
   api:
     image: ${IMAGE_REGISTRY:?Required}/api:${IMAGE_TAG:?Required}
     restart: unless-stopped
+    deploy: { replicas: "${API_REPLICAS:-1}" }
     environment:
       <<: *telemetry
       ASPNETCORE_ENVIRONMENT: Production
@@ -59,6 +60,7 @@ services:
   worker:
     image: ${IMAGE_REGISTRY:?Required}/worker:${IMAGE_TAG:?Required}
     restart: unless-stopped
+    deploy: { replicas: "${WORKER_REPLICAS:-1}" }
     environment:
       <<: *telemetry
       ConnectionStrings__Postgres: "Host=postgres;Database=integraops;Username=integraops;Password=${POSTGRES_PASSWORD};Timeout=5;Command Timeout=15"

@@ -16,7 +16,7 @@ Bu belge projenin V1 kapanışından kurumsal ürüne kadar olan geliştirme pla
 
 ## Şu an neredeyiz
 
-**Aktif aşama:** Ölçek büyüdüğünde (Aşama 14). Aşama 13 yerelde sınanabilen bütün kısımlarıyla tamamlandı; ödeme sağlayıcısı ve gerçek kimlik sağlayıcı kabulü müşteri kararı bekliyor. Aşama 2, 3 ve 5 dış girdi bekliyor.
+**Aktif aşama:** Yol haritasının yerelde yapılabilen bütün aşamaları tamamlandı. Aşama 14 için kapasite ölçüm aracı, toplu yayın ve kopya desteği hazır; sonraki ölçek adımları ölçülen ihtiyaca göre `docs/olcek.md` sırasıyla alınır. Aşama 2, 3 ve 5 dış girdi (kaynak sistem, sunucu, pilot ekibi), Aşama 13 ödeme sağlayıcısı bekliyor.
 
 Aşama 1 tamamlandı. Aşama 3 ve 4'ün yerelde sınanabilen bütün kısımları tamamlandı; kalan görevler gerçek sunucu, alan adı ve SMTP bilgisine bağlı. Bu girdiler gelene kadar Aşama 2, 3 ve 5 için kullanıcı kararı gerekiyor:
 
@@ -361,22 +361,25 @@ Doğrusal akışların ötesine geçmek ayrı bir iş kuralı geliştirmesidir.
 
 ---
 
-## 14. Ölçek büyüdüğünde — Kapasite ve erişilebilirlik ⏳
+## 14. Ölçek büyüdüğünde — Kapasite ve erişilebilirlik ✅ (ölçüm aracı ve ilk adımlar)
 
-Bu işler ölçülen ihtiyaçlara göre sıraya alınır.
+Bu işler ölçülen ihtiyaçlara göre sıraya alınır. Ölçüm aracı ve ilk kapasite adımları hazır; kalanlar `docs/olcek.md` içindeki eşikler aşıldığında uygulanır.
 
-| İhtiyaç | Değerlendirilecek geliştirme |
-|---|---|
-| Olay işleme kapasitesinin yetmemesi | Worker sayısının artırılması, kuyruk bölümleme, toplu işleme |
-| Veritabanı büyümesi | İndeksler, arşivleme, uygun tablolarda bölümleme |
-| Tek sunucu arızasında hizmetin devam etmesi | Veritabanı ve broker için yüksek erişilebilirlik |
-| Tekrarlanan okuma yükünün artması | Gerektiğinde Redis önbelleği |
-| Servis ve sunucu sayısının yönetiminin zorlaşması | Yönetilen konteyner altyapısı veya Kubernetes |
-| Analitik sorguların işlem sistemini zorlaması | Ayrı raporlama deposu |
+| İhtiyaç | Değerlendirilecek geliştirme | Durum |
+|---|---|---|
+| Kapasitenin ölçülmesi | `scripts/load_test.py`: kabul hızı, gecikme yüzdelikleri, uçtan uca işleme, tablo büyümesi | ✅ Yerel temel ölçüm alındı |
+| Olay işleme kapasitesinin yetmemesi | Worker sayısının artırılması, kuyruk bölümleme, toplu işleme | ✅ Toplu outbox yayını (+40%), `WORKER_REPLICAS`, tekil işler için kilit; ⏳ kuyruk bölümleme ölçüm gerektirir |
+| Veritabanı büyümesi | İndeksler, arşivleme, uygun tablolarda bölümleme | ✅ Migration 012 indeksleri, outbox temizliği; ⏳ bölümleme `docs/olcek.md` eşiğinde |
+| Tek sunucu arızasında hizmetin devam etmesi | Veritabanı ve broker için yüksek erişilebilirlik | ⏳ Ölçüt ve seçenekler belgelendi; yönetilen PostgreSQL önerisi |
+| Tekrarlanan okuma yükünün artması | Gerektiğinde Redis önbelleği | ⏳ Ölçülen ihtiyaç yok |
+| Servis ve sunucu sayısının yönetiminin zorlaşması | Yönetilen konteyner altyapısı veya Kubernetes | ⏳ Compose kopyaları yeterli; geçiş ölçütü belgelendi |
+| Analitik sorguların işlem sistemini zorlaması | Ayrı raporlama deposu | ⏳ Rapor sorguları indeksli; okuma kopyası ilk adım |
 
 Dil çeşitlendirmek tek başına kapasite çözümü sayılmaz. Darboğazın nerede olduğu ölçülerek ilerlenir.
 
 Yeterli geçmiş veri oluşursa Python üzerinden anomali tespiti, olası neden önerileri ve olay özetleme eklenebilir. Bunlar ileri aşama özellikleridir, temel ürünün tamamlanması için şart değildir.
+
+**Doğrulama:** `scripts/load_test.py --transactions 2000 --concurrency 32`; sonuçlar ve eşikler `docs/olcek.md`.
 
 ---
 
@@ -408,6 +411,7 @@ Yeterli geçmiş veri oluşursa Python üzerinden anomali tespiti, olası neden 
 | 22 Eylül 2026 | Aşama 2 | Entegrasyon sözleşmesi yazıldı. Kaynak sistem seçimi bekleniyor |
 | 22 Eylül 2026 | V1.1 | Günlük kullanım özellikleri: migration 004, 48 kontrol geçti. **V1.1 tamamlandı** |
 | 22 Eylül 2026 | Aşama 13 | Organizasyonlar, planlar, kullanım ölçümü, TOTP, OpenID Connect, dışa aktarım ve silme: migration 011, 68 kontrol geçti. **Aşama 13 tamamlandı** (ödeme sağlayıcısı bekliyor) |
+| 22 Eylül 2026 | Aşama 14 | Kapasite ölçüm aracı, toplu outbox yayını, worker kopyaları ve tekil iş kilitleri, migration 012. Yerel temel ölçüm alındı; sonraki adımlar eşiklere bağlı |
 | 22 Eylül 2026 | V1.2 | Akış sürümleme, takvim, grup süreleri, ihlal raporu: migration 005, 34 kontrol geçti. **V1.2 tamamlandı** |
 | 22 Eylül 2026 | Aşama 8 | Go aktarım ajanı, yaşam sinyali (migration 006), 21 kontrol geçti. **Aşama 8 tamamlandı** |
 | 22 Eylül 2026 | Aşama 9 | Python mutabakat servisi, sözleşme uçları (migration 007), 18 kontrol geçti. **Aşama 9 tamamlandı** |
