@@ -217,6 +217,49 @@ public sealed class PostgresPilotQueries(NpgsqlDataSource source, IDataProtectio
         await tx.CommitAsync(ct);
     }
 
+    public async Task Heartbeat(ProjectIdentity actor, AgentHeartbeatInput input, CancellationToken ct)
+    {
+        var name = Text(input.Name, 64, "Ajan adı");
+        if (!System.Text.RegularExpressions.Regex.IsMatch(name, "^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")) throw new PilotHttpException(400, "Ajan adı geçersiz.");
+        var version = Text(input.Version, 64, "Sürüm");
+        var host = (input.Host ?? "").Trim(); if (host.Length > 200) host = host[..200];
+        var kind = (input.SourceKind ?? "").Trim(); if (kind.Length > 32) throw new PilotHttpException(400, "Kaynak türü geçersiz.");
+        var lastError = string.IsNullOrWhiteSpace(input.LastError) ? null : input.LastError.Trim();
+        if (lastError is { Length: > 200 }) lastError = lastError[..200];
+        DateTimeOffset? lastSuccess = null;
+        if (!string.IsNullOrWhiteSpace(input.LastSuccessAt))
+        {
+            var errors = new Dictionary<string, string[]>();
+            lastSuccess = IntegraOps.Application.InputValidation.DateFilter(errors, "lastSuccessAt", input.LastSuccessAt);
+            if (errors.Count > 0) throw new PilotHttpException(400, "lastSuccessAt ISO 8601 olmalı.");
+        }
+        var config = input.Config is { ValueKind: System.Text.Json.JsonValueKind.Object } cfg ? cfg.GetRawText() : "{}";
+        if (config.Length > 4000) throw new PilotHttpException(400, "Yapılandırma özeti çok büyük.");
+        await using var c = await source.OpenConnectionAsync(ct);
+        await Run(c, null, """
+            INSERT INTO agent_heartbeats(project_id,name,version,host,source_kind,pending,sent_total,dead_total,retry_total,last_error,last_success_at,config)
+            VALUES(@p,@n,@v,@h,@k,@pending,@sent,@dead,@retry,@err,CAST(@ok AS timestamptz),CAST(@cfg AS jsonb))
+            ON CONFLICT(project_id,name) DO UPDATE SET version=EXCLUDED.version,host=EXCLUDED.host,source_kind=EXCLUDED.source_kind,
+                pending=EXCLUDED.pending,sent_total=EXCLUDED.sent_total,dead_total=EXCLUDED.dead_total,retry_total=EXCLUDED.retry_total,
+                last_error=EXCLUDED.last_error,last_success_at=EXCLUDED.last_success_at,config=EXCLUDED.config,seen_at=clock_timestamp()
+            """, ct, ("p", actor.ProjectId), ("n", name), ("v", version), ("h", host), ("k", kind), ("pending", Math.Max(0, input.Pending ?? 0)),
+            ("sent", Math.Max(0, input.SentTotal ?? 0)), ("dead", Math.Max(0, input.DeadTotal ?? 0)), ("retry", Math.Max(0, input.RetryTotal ?? 0)),
+            ("err", lastError), ("ok", lastSuccess), ("cfg", config));
+    }
+
+    public async Task<object> Agents(Guid project, CancellationToken ct)
+    {
+        await using var c = await source.OpenConnectionAsync(ct);
+        var rows = await Rows(c, null, """
+            SELECT name,version,host,source_kind,pending,sent_total,dead_total,retry_total,last_error,last_success_at,config,first_seen_at,seen_at,
+                seen_at < clock_timestamp() - interval '2 minutes' AS stale
+            FROM agent_heartbeats WHERE project_id=@p ORDER BY name
+            """, ct, ("p", project));
+        foreach (var row in rows) // jsonb arrives as text; hand the panel a real object
+            row["config"] = System.Text.Json.JsonDocument.Parse((string)row["config"]!).RootElement;
+        return rows;
+    }
+
     public async Task<object> Operations(Guid project, CancellationToken ct)
     {
         await using var c = await source.OpenConnectionAsync(ct);

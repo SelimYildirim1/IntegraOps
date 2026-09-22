@@ -2,7 +2,7 @@
 
 Bu belge projenin V1 kapanışından kurumsal ürüne kadar olan geliştirme planını ve her aşamanın güncel durumunu tutar. Aşamalar sırayla uygulanır. Bir aşama ancak kendi bitiş ölçütü karşılandığında tamamlanmış sayılır.
 
-**Son güncelleme:** 22 Eylül 2026 (V1.2 tamamlandı)
+**Son güncelleme:** 22 Eylül 2026 (Go aktarım ajanı tamamlandı)
 
 ## Durum işaretleri
 
@@ -16,7 +16,7 @@ Bu belge projenin V1 kapanışından kurumsal ürüne kadar olan geliştirme pla
 
 ## Şu an neredeyiz
 
-**Aktif aşama:** Go aktarım ajanı (Aşama 8). Aşama 2, 3 ve 5 dış girdi bekliyor; V1.1 ve V1.2 tamamlandı.
+**Aktif aşama:** V2 Python mutabakat servisi (Aşama 9). Aşama 2, 3 ve 5 dış girdi bekliyor; V1.1, V1.2 ve Go ajanı tamamlandı.
 
 Aşama 1 tamamlandı. Aşama 3 ve 4'ün yerelde sınanabilen bütün kısımları tamamlandı; kalan görevler gerçek sunucu, alan adı ve SMTP bilgisine bağlı. Bu girdiler gelene kadar Aşama 2, 3 ve 5 için kullanıcı kararı gerekiyor:
 
@@ -222,25 +222,27 @@ Mevcut akışların sabit olması geçmiş işlemlerin anlamını koruyor. Bu ya
 
 ---
 
-## 8. V1.2 sonrası — Go ile kaynak tarafı aktarım ajanı ⏳
+## 8. V1.2 sonrası — Go ile kaynak tarafı aktarım ajanı ✅
 
 Go'nun ilk görevi müşteri sisteminin yanında çalışan olay aktarım ajanıdır. İlk gerçek entegrasyon ve pilottan sonra, farklı kaynaklarda tekrar kullanılabilir bir gönderici ihtiyacı doğrulanınca eklenir.
 
 | Görev | Durum |
 |---|---|
-| Desteklenen kaynaklardan kalıcı olay kayıtlarını alma | ⏳ |
-| IntegraOps API'sine HTTPS üzerinden gönderme | ⏳ |
-| Ağ kesintisinde gönderimleri bekletme | ⏳ |
-| Kontrollü tekrar deneme | ⏳ |
-| Gönderim hızını sınırlama | ⏳ |
-| Bağlantı durumunu ve bekleyen kayıt sayısını bildirme | ⏳ |
-| Yapılandırma ve sürüm bilgisini merkeze raporlama | ⏳ |
+| Desteklenen kaynaklardan kalıcı olay kayıtlarını alma | ✅ PostgreSQL outbox ve dizin kaynağı |
+| IntegraOps API'sine HTTPS üzerinden gönderme | ✅ Uzak adres için https zorunlu |
+| Ağ kesintisinde gönderimleri bekletme | ✅ Kayıtlar kaynakta kalır; deneme sayacı artmaz |
+| Kontrollü tekrar deneme | ✅ Üstel bekleme, 50 deneme sınırı, kalıcı hata ayrımı |
+| Gönderim hızını sınırlama | ✅ Token bucket, `RATE_PER_SEC` |
+| Bağlantı durumunu ve bekleyen kayıt sayısını bildirme | ✅ `/status`, `/metrics` |
+| Yapılandırma ve sürüm bilgisini merkeze raporlama | ✅ Yaşam sinyali; panel Sistem ekranı |
 
 **Teknoloji:** Go ile ayrı çalıştırılabilir ajan. Kaynak kuyruğundan bağımsız yerel tampon gerekirse SQLite değerlendirilir.
 
 **Neden Go:** Ayrı dağıtılabilen ve eşzamanlı gönderimleri yöneten bir bileşen için anlamlı bir görev sınırı oluşturur. .NET, işlem durumu ve alarm kurallarının merkezi olmaya devam eder.
 
 **Bitiş ölçütü:** Ajan yeniden başlatma ve ağ kesintilerinden sonra gönderimlere doğru olay kimlikleriyle devam eder.
+
+**Doğrulama:** `scripts/verify_agent.py` 21 kontrol (API kesintisi dahil), Go birim testleri. Ayrıntı `docs/aktarim-ajani.md`.
 
 ---
 
@@ -378,7 +380,7 @@ Yeterli geçmiş veri oluşursa Python üzerinden anomali tespiti, olası neden 
 | RabbitMQ | Asenkron olay aktarımı ve worker kuyruğu | Mevcut |
 | Docker Compose / Caddy | İlk canlı dağıtım ve HTTPS | V1 canlı kabulü |
 | OpenTelemetry / Prometheus / Grafana | Teknik sağlık, ölçüm ve operasyon panoları | Canlı pilot hazırlığı |
-| Go | Kaynak tarafında tekrar kullanılabilir aktarım ajanı | Pilot sonrası, ihtiyaç doğrulanınca |
+| Go | Kaynak tarafında tekrar kullanılabilir aktarım ajanı | Mevcut: `agent/` dizini |
 | Python | Mutabakat ve dönemsel analiz servisi | V2; yardımcı betikler zaten mevcut |
 | SQLite | Gerekirse Go ajanının yerel kalıcı tamponu | Ajan tasarımında ihtiyaç olursa |
 | Redis / Kubernetes | Önbellek veya büyük dağıtımın yönetimi | Ölçülen ihtiyaç oluşursa |
@@ -396,3 +398,4 @@ Yeterli geçmiş veri oluşursa Python üzerinden anomali tespiti, olası neden 
 | 22 Eylül 2026 | Aşama 2 | Entegrasyon sözleşmesi yazıldı. Kaynak sistem seçimi bekleniyor |
 | 22 Eylül 2026 | V1.1 | Günlük kullanım özellikleri: migration 004, 48 kontrol geçti. **V1.1 tamamlandı** |
 | 22 Eylül 2026 | V1.2 | Akış sürümleme, takvim, grup süreleri, ihlal raporu: migration 005, 34 kontrol geçti. **V1.2 tamamlandı** |
+| 22 Eylül 2026 | Aşama 8 | Go aktarım ajanı, yaşam sinyali (migration 006), 21 kontrol geçti. **Aşama 8 tamamlandı** |

@@ -15,6 +15,10 @@ export type BreachReport = {
   total: number; page: number; pageSize: number;
   byStep: { flow: string; step_code: string; breached: number; total: number; avg_elapsed: number; allowance: number }[];
 };
+export type AgentInfo = {
+  name: string; version: string; host: string; source_kind: string; pending: number; sent_total: number; dead_total: number; retry_total: number;
+  last_error: string | null; last_success_at: string | null; config: Record<string, unknown>; first_seen_at: string; seen_at: string; stale: boolean;
+};
 export type RetentionInfo = {
   policy: { finished_transaction_days: number | null; notification_days: number | null; audit_days: number | null; updated_at: string | null };
   runs: { ran_at: string; transactions_deleted: number; deliveries_deleted: number; audit_deleted: number }[];

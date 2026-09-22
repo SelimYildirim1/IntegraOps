@@ -35,7 +35,7 @@ public static class PilotEndpoints
             var write = HttpMethods.IsPost(c.Request.Method);
             var path = c.Request.Path.Value;
             var allowed = (HttpMethods.IsGet(c.Request.Method) && actor.Scope is "legacy" or "read")
-                || (write && path == "/api/v1/events" && actor.Scope is "legacy" or "ingest")
+                || (write && path is "/api/v1/events" or "/api/v1/agents/heartbeat" && actor.Scope is "legacy" or "ingest")
                 || (write && path == "/api/v1/flows" && actor.Scope == "legacy");
             if (rule?.SessionOnly == true || !allowed) throw new PilotHttpException(403, "Bu anahtarın bu işlem için yetkisi yok.");
         }
@@ -121,6 +121,11 @@ public static class PilotEndpoints
         { await q.SetChannel(Actor(c), id, input.Enabled, ct); return Results.NoContent(); }).WithMetadata(new ProjectRule("owner"));
         projectApi.MapGet("/operations", async (HttpContext c, PostgresPilotQueries q, CancellationToken ct)
             => Results.Ok(await q.Operations(Actor(c).ProjectId, ct))).WithMetadata(new ProjectRule("owner"));
+        // Transfer agents report with their ingest key; the panel lists them on the system page.
+        projectApi.MapPost("/agents/heartbeat", async (HttpContext c, AgentHeartbeatInput input, PostgresPilotQueries q, CancellationToken ct) =>
+        { await q.Heartbeat(Actor(c), input, ct); return Results.NoContent(); }).WithMetadata(new ProjectRule("owner,operator,viewer", SessionOnly: false));
+        projectApi.MapGet("/agents", async (HttpContext c, PostgresPilotQueries q, CancellationToken ct)
+            => Results.Ok(await q.Agents(Actor(c).ProjectId, ct))).WithMetadata(new ProjectRule());
 
         MapOperations(app, projectApi);
         MapVersions(projectApi);

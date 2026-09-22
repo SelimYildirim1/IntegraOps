@@ -1,0 +1,19 @@
+FROM golang:1.25-alpine AS build
+ARG APP_VERSION=dev
+WORKDIR /src
+COPY agent/go.mod agent/go.sum ./
+RUN go mod download
+COPY agent/ .
+RUN CGO_ENABLED=0 go build -trimpath -ldflags "-s -w -X main.version=${APP_VERSION}" -o /out/integraops-agent ./cmd/integraops-agent
+
+FROM gcr.io/distroless/static-debian12:nonroot
+ARG APP_VERSION=dev
+ARG APP_REVISION=unknown
+LABEL org.opencontainers.image.source="https://github.com/SelimYildirim1/IntegraOps" \
+      org.opencontainers.image.version="$APP_VERSION" \
+      org.opencontainers.image.revision="$APP_REVISION" \
+      org.opencontainers.image.title="integraops-agent"
+COPY --from=build /out/integraops-agent /integraops-agent
+USER nonroot:nonroot
+EXPOSE 9464
+ENTRYPOINT ["/integraops-agent"]

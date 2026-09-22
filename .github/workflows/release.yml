@@ -38,6 +38,10 @@ jobs:
             context: frontend
             file: frontend/Dockerfile
             target: ""
+          - name: agent
+            context: .
+            file: deploy/docker/Dockerfile.agent
+            target: ""
     steps:
       - uses: actions/checkout@v4
         with:
