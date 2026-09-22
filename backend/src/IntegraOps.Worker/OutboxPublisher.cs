@@ -6,10 +6,12 @@ using RabbitMQ.Client;
 namespace IntegraOps.Worker;
 
 public sealed class OutboxPublisher(ConnectionFactory factory, OutboxDispatcher dispatcher,
-    ILogger<OutboxPublisher> logger) : BackgroundService
+    Microsoft.Extensions.Configuration.IConfiguration configuration, ILogger<OutboxPublisher> logger) : BackgroundService
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
+        // Rows are published in batches so one confirmation round trip covers many events (docs/olcek.md).
+        var batchSize = Math.Clamp(Microsoft.Extensions.Configuration.ConfigurationBinder.GetValue(configuration, "Outbox:BatchSize", 50), 1, 500);
         while (!stoppingToken.IsCancellationRequested)
         {
             try
@@ -24,9 +26,9 @@ public sealed class OutboxPublisher(ConnectionFactory factory, OutboxDispatcher 
                 {
                     using var deadline = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken);
                     deadline.CancelAfter(TimeSpan.FromSeconds(10));
-                    if (!await dispatcher.PublishNextAsync(channel, deadline.Token))
-                        await Task.Delay(TimeSpan.FromMilliseconds(250), stoppingToken);
-                    else IntegraOpsMetrics.OutboxPublished.Add(1);
+                    var published = await dispatcher.PublishBatchAsync(channel, batchSize, deadline.Token);
+                    if (published == 0) await Task.Delay(TimeSpan.FromMilliseconds(250), stoppingToken);
+                    else IntegraOpsMetrics.OutboxPublished.Add(published);
                 }
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { break; }

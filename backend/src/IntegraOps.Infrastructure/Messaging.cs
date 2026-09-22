@@ -27,39 +27,47 @@ public static class Messaging
 
 public sealed class OutboxDispatcher(NpgsqlDataSource dataSource)
 {
-    public async Task<bool> PublishNextAsync(IChannel channel, CancellationToken ct)
+    public Task<bool> PublishNextAsync(IChannel channel, CancellationToken ct) => PublishBatchAsync(channel, 1, ct).ContinueWith(t => t.Result > 0, ct);
+
+    /// <summary>
+    /// Publishes up to <paramref name="batchSize"/> pending rows in one database transaction. Publishes are
+    /// pipelined and confirmed together; if any confirmation fails the rows stay pending and are retried,
+    /// which the consumer tolerates because processing is idempotent per event id.
+    /// </summary>
+    public async Task<int> PublishBatchAsync(IChannel channel, int batchSize, CancellationToken ct)
     {
         await using var connection = await dataSource.OpenConnectionAsync(ct);
         await using var transaction = await connection.BeginTransactionAsync(ct);
-        long id;
-        EventPointer pointer;
+        var ids = new List<long>(); var pointers = new List<EventPointer>();
         await using (var select = Sql.Command(connection, transaction, """
             SELECT id, project_id, event_id FROM outbox_messages
-            WHERE published_at IS NULL ORDER BY id LIMIT 1 FOR UPDATE SKIP LOCKED
-            """))
+            WHERE published_at IS NULL ORDER BY id LIMIT @n FOR UPDATE SKIP LOCKED
+            """, ("n", Math.Clamp(batchSize, 1, 500))))
         await using (var reader = await select.ExecuteReaderAsync(ct))
         {
-            if (!await reader.ReadAsync(ct)) return false;
-            id = reader.GetInt64(0);
-            pointer = new EventPointer(reader.GetGuid(1), reader.GetGuid(2));
+            while (await reader.ReadAsync(ct))
+            {
+                ids.Add(reader.GetInt64(0));
+                pointers.Add(new EventPointer(reader.GetGuid(1), reader.GetGuid(2)));
+            }
         }
+        if (ids.Count == 0) return 0;
 
-        var properties = new BasicProperties
-        {
-            Persistent = true,
-            ContentType = "application/json",
-            MessageId = $"{pointer.ProjectId}:{pointer.EventId}"
-        };
         // This channel must have publisher confirmations + confirmation tracking enabled.
-        // The await fails if the broker rejects or returns the mandatory message.
-        await channel.BasicPublishAsync(exchange: "", routingKey: Messaging.Queue, mandatory: true,
-            basicProperties: properties, body: JsonSerializer.SerializeToUtf8Bytes(pointer, Messaging.Json),
-            cancellationToken: ct);
+        // Each await fails if the broker rejects or returns the mandatory message.
+        var publishes = new List<ValueTask>(pointers.Count);
+        foreach (var pointer in pointers)
+        {
+            var properties = new BasicProperties { Persistent = true, ContentType = "application/json", MessageId = $"{pointer.ProjectId}:{pointer.EventId}" };
+            publishes.Add(channel.BasicPublishAsync(exchange: "", routingKey: Messaging.Queue, mandatory: true,
+                basicProperties: properties, body: JsonSerializer.SerializeToUtf8Bytes(pointer, Messaging.Json), cancellationToken: ct));
+        }
+        foreach (var publish in publishes) await publish;
 
         await using var mark = Sql.Command(connection, transaction,
-            "UPDATE outbox_messages SET published_at = clock_timestamp() WHERE id = @id", ("id", id));
+            "UPDATE outbox_messages SET published_at = clock_timestamp() WHERE id = ANY(@ids)", ("ids", ids.ToArray()));
         await mark.ExecuteNonQueryAsync(ct);
         await transaction.CommitAsync(ct);
-        return true;
+        return ids.Count;
     }
 }

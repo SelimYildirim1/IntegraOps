@@ -5,7 +5,7 @@ using Microsoft.Extensions.Logging;
 namespace IntegraOps.Worker;
 
 /// <summary>Hourly commercial housekeeping: trial reminders and purging organizations whose deletion grace period ended.</summary>
-public sealed class EnterpriseScheduler(PostgresOrganizationStore organizations, PostgresSecurityStore security, ILogger<EnterpriseScheduler> logger) : BackgroundService
+public sealed class EnterpriseScheduler(PostgresOrganizationStore organizations, PostgresSecurityStore security, Npgsql.NpgsqlDataSource source, ILogger<EnterpriseScheduler> logger) : BackgroundService
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
@@ -14,6 +14,8 @@ public sealed class EnterpriseScheduler(PostgresOrganizationStore organizations,
         {
             try
             {
+                await using var job = await JobLock.TryAcquire(source, "enterprise", stoppingToken);
+                if (job is null) continue;
                 var reminders = await organizations.SendTrialReminders(stoppingToken);
                 if (reminders > 0) logger.LogInformation("{Count} deneme süresi hatırlatması kuyruğa alındı.", reminders);
                 var purged = await security.PurgeDue(stoppingToken);

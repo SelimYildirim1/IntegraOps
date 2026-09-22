@@ -90,6 +90,6 @@ python3 scripts/verify_enterprise.py   # 68 kontrol; openssl gerektirir, süreç
 dotnet test backend/tests              # TotpTests RFC 6238 örnek vektörlerini içerir
 ```
 
-22 Eylül 2026 sonucu: 68 kurumsal kontrol geçti (kayıt, plan sınırları, kullanım ölçümü, gruplar, yönetim listesi, TOTP, SSO, güvenlik olayları, dışa aktarım, silme isteği); 91 .NET birim testi geçti; migration 011 uygulandı. Giriş uçlarındaki hız sınırı (dakikada 30) nedeniyle betik gerekirse 61 saniye bekler.
+22 Eylül 2026 sonucu: 68 kurumsal kontrol geçti (kayıt, plan sınırları, kullanım ölçümü, gruplar, yönetim listesi, TOTP, SSO, güvenlik olayları, dışa aktarım, silme isteği); 87 .NET birim testi geçti; migration 011 uygulandı. Giriş uçlarındaki hız sınırı (dakikada 30) nedeniyle betik gerekirse 61 saniye bekler.
 
 Yerel doğrulama betiği SSO için `host.docker.internal` üzerinden bu makinedeki sahte sağlayıcıya ulaşır; canlıda gerçek sağlayıcı (Entra ID, Google, Okta, Keycloak) ile bir kez el ile kabul yapılmalıdır. Silme sonrası kalıcı temizleme 7 günlük süre gerektirdiğinden betikte istek ve iptal sınanır; temizleme SQL'i `PostgresSecurityStore.PurgeSql` içindedir.

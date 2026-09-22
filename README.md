@@ -133,6 +133,7 @@ python3 scripts/verify_reports.py
 python3 scripts/verify_v2_flows.py
 python3 scripts/verify_connections.py # Node 20+ ve sdk/typescript derlemesi gerekir
 python3 scripts/verify_enterprise.py  # kurumsal: kayıt, planlar, TOTP, SSO (süreç içi sağlayıcı, openssl gerekir), dışa aktarım
+python3 scripts/load_test.py --transactions 500 --concurrency 16  # kapasite ölçümü; sonuçlar docs/olcek.md
 ```
 
 Kesinti provası için ayrı, uygun yerel test zamanında:
@@ -228,6 +229,7 @@ Gerçek kaynak sistemin bağlanması için sözleşme `docs/entegrasyon-sozlesme
 - `docs/baglantilar.md`: Bağlantılar, eşleme şablonları, SDK'lar ve anahtar yenileme.
 - `docs/kurumsal.md`: Organizasyonlar, planlar, SSO, iki adımlı doğrulama, dışa aktarma ve silme.
 - `docs/destek-olay-mudahale.md`: Destek seviyeleri, sık istekler ve olay müdahale akışı.
+- `docs/olcek.md`: Kapasite ölçümü, temel değerler, ölçek adımları ve eşikleri.
 - `docs/entegrasyon-sozlesmesi.md`: Gerçek kaynak sistem için olay, kimlik ve kuyruk kuralları.
 - `docs/izleme.md` ve `docs/canli-ortam.md`: Sistem sağlığı izleme ve canlı işletim rehberleri.
 - `IntegraOps_V1_00_Kurulum_ve_Test.md`: V1 modüllerinin ayrıntılı kurulum açıklaması.

@@ -5,7 +5,7 @@ using Microsoft.Extensions.Logging;
 namespace IntegraOps.Worker;
 
 /// <summary>Sends the daily/weekly report digest at each project's configured local hour.</summary>
-public sealed class DigestScheduler(PostgresReportQueries reports, ILogger<DigestScheduler> logger) : BackgroundService
+public sealed class DigestScheduler(PostgresReportQueries reports, Npgsql.NpgsqlDataSource source, ILogger<DigestScheduler> logger) : BackgroundService
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
@@ -14,6 +14,9 @@ public sealed class DigestScheduler(PostgresReportQueries reports, ILogger<Diges
         {
             try
             {
+                // One replica sends digests per round; the others skip.
+                await using var job = await JobLock.TryAcquire(source, "digests", stoppingToken);
+                if (job is null) continue;
                 foreach (var (project, period) in await reports.DueDigests(DateTimeOffset.UtcNow, stoppingToken))
                 {
                     await reports.SendDigest(project, period, "schedule", null, stoppingToken);

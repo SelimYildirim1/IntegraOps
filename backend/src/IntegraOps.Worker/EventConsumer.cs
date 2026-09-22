@@ -8,18 +8,21 @@ using RabbitMQ.Client.Events;
 namespace IntegraOps.Worker;
 
 public sealed class EventConsumer(ConnectionFactory factory, PostgresTrackingStore store,
-    ILogger<EventConsumer> logger) : BackgroundService
+    Microsoft.Extensions.Configuration.IConfiguration configuration, ILogger<EventConsumer> logger) : BackgroundService
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
+        // Events of one transaction serialize on the transaction row; unrelated transactions process in parallel.
+        var concurrency = (ushort)Math.Clamp(Microsoft.Extensions.Configuration.ConfigurationBinder.GetValue(configuration, "EventConsumer:Concurrency", 1), 1, 64);
+        var prefetch = (ushort)Math.Clamp(Microsoft.Extensions.Configuration.ConfigurationBinder.GetValue(configuration, "EventConsumer:Prefetch", 32), 1, 1000);
         while (!stoppingToken.IsCancellationRequested)
         {
             try
             {
                 await using var connection = await factory.CreateConnectionAsync(stoppingToken);
-                await using var channel = await connection.CreateChannelAsync(cancellationToken: stoppingToken);
+                await using var channel = await connection.CreateChannelAsync(new CreateChannelOptions(false, false, consumerDispatchConcurrency: concurrency), stoppingToken);
                 await Messaging.DeclareAsync(channel, stoppingToken);
-                await channel.BasicQosAsync(0, 16, false, stoppingToken);
+                await channel.BasicQosAsync(0, prefetch, false, stoppingToken);
                 var disconnected = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
                 channel.ChannelShutdownAsync += (_, _) => { disconnected.TrySetResult(); return Task.CompletedTask; };
                 var consumer = new AsyncEventingBasicConsumer(channel);
