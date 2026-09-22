@@ -1,0 +1,15 @@
+FROM python:3.13-slim
+ARG APP_VERSION=dev
+ARG APP_REVISION=unknown
+LABEL org.opencontainers.image.source="https://github.com/SelimYildirim1/IntegraOps" \
+      org.opencontainers.image.version="$APP_VERSION" \
+      org.opencontainers.image.revision="$APP_REVISION" \
+      org.opencontainers.image.title="integraops-reconciler"
+ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
+WORKDIR /app
+COPY reconciler/pyproject.toml ./
+COPY reconciler/integraops_reconciler ./integraops_reconciler
+RUN pip install --no-cache-dir . && useradd --system --uid 10001 reconciler
+USER reconciler
+ENTRYPOINT ["integraops-reconciler"]
+CMD ["--config", "/etc/integraops-reconciler/reconciler.conf", "--loop"]

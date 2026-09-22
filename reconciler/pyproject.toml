@@ -1,0 +1,16 @@
+[project]
+name = "integraops-reconciler"
+version = "0.1.0"
+description = "Compares source-system transactions with IntegraOps and records discrepancies."
+requires-python = ">=3.11"
+dependencies = ["pg8000>=1.31"]
+
+[project.scripts]
+integraops-reconciler = "integraops_reconciler.cli:main"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["integraops_reconciler*"]

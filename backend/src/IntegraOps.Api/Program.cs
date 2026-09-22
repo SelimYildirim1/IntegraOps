@@ -74,9 +74,11 @@ app.Use(async (context, next) =>
     {
         await Results.Problem(statusCode: 409, title: ex.Message).ExecuteAsync(context);
     }
-    catch (NpgsqlException) when (!context.RequestAborted.IsCancellationRequested)
+    catch (NpgsqlException ex) when (!context.RequestAborted.IsCancellationRequested)
     {
-        app.Logger.LogError("Veritabanı işlemi tamamlanamadı. TraceId: {TraceId}", context.TraceIdentifier);
+        // SqlState and the server's message name the failing statement without echoing parameter values.
+        app.Logger.LogError("Veritabanı işlemi tamamlanamadı. TraceId: {TraceId} SqlState: {SqlState} Hata: {Message}",
+            context.TraceIdentifier, ex.SqlState, (ex as PostgresException)?.MessageText ?? ex.GetType().Name);
         await Results.Problem(statusCode: 503, title: "Kayıt servisine şu anda ulaşılamıyor. Aynı eventId ile tekrar deneyin.")
             .ExecuteAsync(context);
     }

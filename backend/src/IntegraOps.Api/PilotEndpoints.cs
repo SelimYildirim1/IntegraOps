@@ -34,8 +34,10 @@ public static class PilotEndpoints
         {
             var write = HttpMethods.IsPost(c.Request.Method);
             var path = c.Request.Path.Value;
-            var allowed = (HttpMethods.IsGet(c.Request.Method) && actor.Scope is "legacy" or "read")
-                || (write && path is "/api/v1/events" or "/api/v1/agents/heartbeat" && actor.Scope is "legacy" or "ingest")
+            // Ingest keys may read their own reconciliation history to resume from the last window.
+            var allowed = (HttpMethods.IsGet(c.Request.Method) && (actor.Scope is "legacy" or "read" || path == "/api/v1/reconciliation/runs"))
+                || (write && path is "/api/v1/events" or "/api/v1/agents/heartbeat" or "/api/v1/reconciliation/runs" && actor.Scope is "legacy" or "ingest")
+                || (write && path == "/api/v1/reconciliation/lookup" && actor.Scope is "legacy" or "read" or "ingest")
                 || (write && path == "/api/v1/flows" && actor.Scope == "legacy");
             if (rule?.SessionOnly == true || !allowed) throw new PilotHttpException(403, "Bu anahtarın bu işlem için yetkisi yok.");
         }
@@ -129,6 +131,20 @@ public static class PilotEndpoints
 
         MapOperations(app, projectApi);
         MapVersions(projectApi);
+        MapReconciliation(projectApi);
+    }
+
+    /// <summary>V2: service contract for the Python reconciler and panel queries.</summary>
+    private static void MapReconciliation(RouteGroupBuilder projectApi)
+    {
+        projectApi.MapPost("/reconciliation/lookup", async (HttpContext c, LookupInput input, PostgresReconciliationStore s, CancellationToken ct)
+            => Results.Ok(await s.Lookup(Actor(c).ProjectId, input, ct))).WithMetadata(new ProjectRule("owner,operator,viewer", SessionOnly: false));
+        projectApi.MapPost("/reconciliation/runs", async (HttpContext c, ReconciliationRunInput input, PostgresReconciliationStore s, CancellationToken ct)
+            => Results.Json(await s.RecordRun(Actor(c), input, ct), statusCode: 201)).WithMetadata(new ProjectRule("owner,operator", SessionOnly: false));
+        projectApi.MapGet("/reconciliation/runs", async (HttpContext c, PostgresReconciliationStore s, string? flow, int? page, CancellationToken ct)
+            => Results.Ok(await s.Runs(Actor(c).ProjectId, flow, page ?? 1, ct))).WithMetadata(new ProjectRule("owner,operator,viewer", SessionOnly: false));
+        projectApi.MapGet("/reconciliation/discrepancies", async (HttpContext c, PostgresReconciliationStore s, string? state, string? flow, string? kind, int? page, CancellationToken ct)
+            => Results.Ok(await s.Discrepancies(Actor(c).ProjectId, state, flow, kind, page ?? 1, ct))).WithMetadata(new ProjectRule());
     }
 
     /// <summary>V1.2: flow drafts and versions, calendars, breach report.</summary>

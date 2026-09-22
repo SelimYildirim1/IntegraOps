@@ -15,3 +15,4 @@ backups/
 .verification/
 .env.live
 .playwright-cli/
+reconciler/.venv/

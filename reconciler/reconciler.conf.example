@@ -1,0 +1,18 @@
+# IntegraOps reconciler. Copy to reconciler.conf (chmod 600). RECONCILER_* environment variables override.
+NAME=erp-mutabakat
+API_URL=https://api.example.com
+# An ingest key of the project (it may also perform lookups).
+API_KEY=io_v1_replace_me
+FLOW=erp-order-invoice
+
+# postgres: run QUERY_FILE against POSTGRES_DSN; json: read JSON_FILE (tests, exports)
+SOURCE=postgres
+POSTGRES_DSN=postgres://reader:secret@erp-db.internal:5432/erp?sslmode=require
+QUERY_FILE=/etc/integraops-reconciler/orders.sql
+
+# Compare the last WINDOW of source data, re-check OVERLAP before the previous run's end,
+# ignore anything younger than GRACE (still in flight), repeat every INTERVAL in --loop mode.
+WINDOW=24h
+OVERLAP=1h
+GRACE=30m
+INTERVAL=15m
