@@ -16,7 +16,7 @@ Bu belge projenin V1 kapanışından kurumsal ürüne kadar olan geliştirme pla
 
 ## Şu an neredeyiz
 
-**Aktif aşama:** Kurumsal kullanım ve ticari ürün (Aşama 13). Aşama 2, 3 ve 5 dış girdi bekliyor; V1.1, V1.2, V2 ve entegrasyon paketi tamamlandı.
+**Aktif aşama:** Ölçek büyüdüğünde (Aşama 14). Aşama 13 yerelde sınanabilen bütün kısımlarıyla tamamlandı; ödeme sağlayıcısı ve gerçek kimlik sağlayıcı kabulü müşteri kararı bekliyor. Aşama 2, 3 ve 5 dış girdi bekliyor.
 
 Aşama 1 tamamlandı. Aşama 3 ve 4'ün yerelde sınanabilen bütün kısımları tamamlandı; kalan görevler gerçek sunucu, alan adı ve SMTP bilgisine bağlı. Bu girdiler gelene kadar Aşama 2, 3 ve 5 için kullanıcı kararı gerekiyor:
 
@@ -339,23 +339,25 @@ Doğrusal akışların ötesine geçmek ayrı bir iş kuralı geliştirmesidir.
 
 ---
 
-## 13. Kurumsal kullanım ve ticari ürün ⏳
+## 13. Kurumsal kullanım ve ticari ürün ✅
 
 | Görev | Durum |
 |---|---|
-| Şirket/organizasyon yönetiminin genişletilmesi | ⏳ |
-| Organizasyon seviyesinde yetkiler ve proje grupları | ⏳ |
-| Kurumsal giriş (SSO) ve çok faktörlü doğrulama | ⏳ |
-| Daha kapsamlı denetim kayıtları | ⏳ |
-| Müşteri bazında kullanım sınırları | ⏳ |
-| Hesap açılışı, deneme süresi ve kurulum yönlendirmeleri | ⏳ |
-| Abonelik ve kullanım ölçümü | ⏳ |
-| Müşteri verilerinin saklanması, dışa aktarılması ve silinmesi süreçleri | ⏳ |
-| Destek ve olay müdahale prosedürleri | ⏳ |
+| Şirket/organizasyon yönetiminin genişletilmesi | ✅ Organizasyon sayfası, üyeler, ad, birden çok organizasyon |
+| Organizasyon seviyesinde yetkiler ve proje grupları | ✅ owner/admin/member; gruplar projelere rol bağlar; en güçlü rol kazanır |
+| Kurumsal giriş (SSO) ve çok faktörlü doğrulama | ✅ OpenID Connect (discovery, JWKS, nonce, tek kullanımlık bilet); TOTP + kurtarma kodları |
+| Daha kapsamlı denetim kayıtları | ✅ `security_events`, organizasyon denetim görünümü, IP ve tarayıcı bilgisi |
+| Müşteri bazında kullanım sınırları | ✅ Plan varsayılanları + `organization_limits`; 403/429/402 uygulaması |
+| Hesap açılışı, deneme süresi ve kurulum yönlendirmeleri | ✅ `/signup`, 14 gün deneme, hoş geldiniz ve hatırlatma e-postaları, 6 adımlı başlangıç listesi |
+| Abonelik ve kullanım ölçümü | ✅ `usage_daily`, plan yönetimi `/admin`; ⛔ ödeme sağlayıcısı ticari model seçilince |
+| Müşteri verilerinin saklanması, dışa aktarılması ve silinmesi süreçleri | ✅ Zip dışa aktarım, 7 gün süreli silme isteği ve kalıcı temizleme |
+| Destek ve olay müdahale prosedürleri | ✅ `docs/destek-olay-mudahale.md` |
 
-**Teknoloji:** Mevcut .NET ve PostgreSQL üzerine standart kimlik sağlayıcı entegrasyonu. Ticari model seçildikten sonra ödeme/abonelik sağlayıcısı.
+**Teknoloji:** .NET ve PostgreSQL üzerine `Microsoft.IdentityModel` ile OpenID Connect doğrulaması, RFC 6238 TOTP, DataProtection ile şifrelenmiş sırlar. Ödeme/abonelik sağlayıcısı ticari model seçildikten sonra eklenecek.
 
-**Bitiş ölçütü:** Birden fazla şirketin hesabı, erişimi, verisi ve kullanım hakları yönetilebilir.
+**Bitiş ölçütü:** Birden fazla şirketin hesabı, erişimi, verisi ve kullanım hakları yönetilebilir. ✅ Yerelde sağlandı; gerçek kimlik sağlayıcı ile bir el ile kabul canlıda yapılmalı.
+
+**Doğrulama:** `scripts/verify_enterprise.py` 68 kontrol, `TotpTests`. Ayrıntı `docs/kurumsal.md`.
 
 ---
 
@@ -405,6 +407,7 @@ Yeterli geçmiş veri oluşursa Python üzerinden anomali tespiti, olası neden 
 | 22 Eylül 2026 | Aşama 3 | İmaj yayın hattı, canlı betikler ve yerel prova: 26 kontrol geçti. Gerçek sunucu bekleniyor |
 | 22 Eylül 2026 | Aşama 2 | Entegrasyon sözleşmesi yazıldı. Kaynak sistem seçimi bekleniyor |
 | 22 Eylül 2026 | V1.1 | Günlük kullanım özellikleri: migration 004, 48 kontrol geçti. **V1.1 tamamlandı** |
+| 22 Eylül 2026 | Aşama 13 | Organizasyonlar, planlar, kullanım ölçümü, TOTP, OpenID Connect, dışa aktarım ve silme: migration 011, 68 kontrol geçti. **Aşama 13 tamamlandı** (ödeme sağlayıcısı bekliyor) |
 | 22 Eylül 2026 | V1.2 | Akış sürümleme, takvim, grup süreleri, ihlal raporu: migration 005, 34 kontrol geçti. **V1.2 tamamlandı** |
 | 22 Eylül 2026 | Aşama 8 | Go aktarım ajanı, yaşam sinyali (migration 006), 21 kontrol geçti. **Aşama 8 tamamlandı** |
 | 22 Eylül 2026 | Aşama 9 | Python mutabakat servisi, sözleşme uçları (migration 007), 18 kontrol geçti. **Aşama 9 tamamlandı** |

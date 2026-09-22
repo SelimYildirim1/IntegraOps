@@ -1,5 +1,5 @@
 export type Role = "owner" | "operator" | "viewer";
-export type Project = { id: string; name: string; role: Role };
+export type Project = { id: string; name: string; role: Role; organization_id?: string; organization?: string };
 export type Access = { projectId: string; userId: string; role: Role };
 export type ActionState = { message: string; ok?: boolean; secret?: string };
 export type Member = { id: string; name: string; email: string; role: Role; activated: boolean };
@@ -88,4 +88,38 @@ export const eventNames: Record<string, string> = {
 };
 export const deliveryNames: Record<string, string> = {
   pending: "Gönderim bekliyor", sending: "Gönderiliyor", sent: "Gönderildi", dead: "Denemeler durdu", cancelled: "İptal edildi",
+};
+
+// Stage 13: organizations, plans, security.
+export type OrgRole = "owner" | "admin" | "member";
+export const orgRoleNames: Record<OrgRole, string> = { owner: "Sahip", admin: "Yönetici", member: "Üye" };
+export type PlanLimits = { maxProjects: number | null; maxUsers: number | null; maxEventsPerDay: number | null; maxRetentionDays: number | null };
+export type Organization = {
+  id: string; name: string; plan: string; planName: string; trialEndsAt: string | null; trialExpired: boolean; planUpdatedAt: string | null; planNote: string;
+  myRole: OrgRole | null; limits: PlanLimits; counts: { projects: number; users: number; eventsToday: number };
+  usage: { day: string; events: number; rejected: number }[];
+  members: { id: string; name: string; email: string; role: OrgRole; created_at: string; mfa_enabled: boolean; last_login_at: string | null }[];
+  projects: { id: string; name: string; created_at: string }[];
+  groups: { id: string; name: string; created_at: string; project_ids: string[] | null; members: { id: string; name: string; email: string; role: Role }[] }[];
+  sso: { issuer: string | null; clientId: string | null; domain: string | null; required: boolean; configured: boolean };
+  deletion: { requestedAt: string | null; scheduledAt: string | null };
+};
+export type MyOrganization = { id: string; name: string; plan: string; role: OrgRole; trial_ends_at: string | null };
+export type Onboarding = { steps: { key: string; title: string; done: boolean; href: string }[]; completed: number; total: number };
+export type SecurityEvent = { id: number; kind: string; ip: string | null; user_agent: string | null; detail: string | null; created_at: string; actor?: string | null };
+export type SecurityInfo = { mfaEnabled: boolean; systemAdmin: boolean; events: SecurityEvent[] };
+export type AuditRow = { id: number; action: string; target: string; created_at: string; project: string; actor: string | null };
+export type DataExport = { id: string; state: "pending" | "running" | "ready" | "failed"; size_bytes: number | null; error: string | null; created_at: string; completed_at: string | null; expires_at: string | null; requested_by: string | null };
+export type AdminOrganization = { id: string; name: string; plan: string; trial_ends_at: string | null; plan_updated_at: string | null; plan_note: string; created_at: string;
+  deletion_scheduled_at: string | null; projects: number; members: number; events_30d: number; owner_email: string | null };
+export type PlanInfo = { code: string; name: string; limits: PlanLimits };
+export const securityKinds: Record<string, string> = {
+  "login.password": "Parola ile giriş", "login.mfa": "İki adımlı giriş", "login.sso": "Tek oturum açma ile giriş", "login.failed": "Başarısız giriş",
+  "login.sso_required": "Parola girişi reddedildi (SSO zorunlu)", "mfa.enabled": "İki adımlı doğrulama açıldı", "mfa.disabled": "İki adımlı doğrulama kapatıldı",
+  "mfa.failed": "Hatalı doğrulama kodu", "mfa.recovery_used": "Kurtarma kodu kullanıldı", signup: "Hesap açıldı", "sso.configured": "SSO ayarlandı", "sso.removed": "SSO kaldırıldı",
+  "sso.failed": "SSO girişi başarısız", "sso.provisioned": "SSO ile kullanıcı oluşturuldu", "org.rename": "Organizasyon adı değişti", "org.member.owner": "Sahip eklendi",
+  "org.member.admin": "Yönetici eklendi", "org.member.member": "Üye eklendi", "org.member.remove": "Üye çıkarıldı", "org.group.create": "Grup oluşturuldu",
+  "org.group.update": "Grup güncellendi", "org.group.delete": "Grup silindi", "org.plan": "Plan değişti", "trial.ending": "Deneme süresi bitmek üzere", "trial.ended": "Deneme süresi doldu",
+  "data.export_requested": "Veri dışa aktarımı istendi", "data.export_ready": "Veri dışa aktarımı hazır", "data.export_downloaded": "Dışa aktarım indirildi",
+  "org.deletion_requested": "Silme isteği", "org.deletion_cancelled": "Silme isteği iptal edildi",
 };

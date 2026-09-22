@@ -27,6 +27,7 @@ IntegraOps, farklı sistemlerden gelen iş olaylarını aynı işlem altında bi
 - Raporlar: adım süreleri ve yüzdelikler, süre uyumu, alarm yanıt süreleri, tekrarlayan sorunlar, veri kalitesi, eğilim grafikleri, günlük/haftalık özet e-postası.
 - Karmaşık süreçler: paralel aşamalar, isteğe bağlı ve gruba bağlı koşullu adımlar, `skipped` ve `cancelled` bildirimleri.
 - Bağlantılar: kaynak sistem kayıtları, sunucu tarafı eşleme şablonları, anahtar yenileme, istemci sürüm takibi, Python ve Node gönderici kütüphaneleri (`sdk/`).
+- Kurumsal: organizasyonlar ve proje grupları, planlar ve günlük kullanım sınırları, hesap açılışı ve deneme süresi, iki adımlı doğrulama (TOTP), OpenID Connect ile kurumsal giriş, güvenlik olayları, veri dışa aktarma ve silme süreci, sistem yönetimi sayfası.
 
 ## Gerekenler
 
@@ -131,6 +132,7 @@ python3 scripts/verify_reconciler.py # reconciler/.venv (pg8000) gerektirir
 python3 scripts/verify_reports.py
 python3 scripts/verify_v2_flows.py
 python3 scripts/verify_connections.py # Node 20+ ve sdk/typescript derlemesi gerekir
+python3 scripts/verify_enterprise.py  # kurumsal: kayıt, planlar, TOTP, SSO (süreç içi sağlayıcı, openssl gerekir), dışa aktarım
 ```
 
 Kesinti provası için ayrı, uygun yerel test zamanında:
@@ -224,6 +226,8 @@ Gerçek kaynak sistemin bağlanması için sözleşme `docs/entegrasyon-sozlesme
 - `docs/raporlar.md`: Rapor göstergeleri, özet e-postaları ve doğrulaması.
 - `docs/v2-akislar.md`: Paralel, koşullu ve isteğe bağlı adımlar, atlama ve iptal kuralları.
 - `docs/baglantilar.md`: Bağlantılar, eşleme şablonları, SDK'lar ve anahtar yenileme.
+- `docs/kurumsal.md`: Organizasyonlar, planlar, SSO, iki adımlı doğrulama, dışa aktarma ve silme.
+- `docs/destek-olay-mudahale.md`: Destek seviyeleri, sık istekler ve olay müdahale akışı.
 - `docs/entegrasyon-sozlesmesi.md`: Gerçek kaynak sistem için olay, kimlik ve kuyruk kuralları.
 - `docs/izleme.md` ve `docs/canli-ortam.md`: Sistem sağlığı izleme ve canlı işletim rehberleri.
 - `IntegraOps_V1_00_Kurulum_ve_Test.md`: V1 modüllerinin ayrıntılı kurulum açıklaması.

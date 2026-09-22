@@ -52,8 +52,13 @@ export async function api<T>(path: string, method = "GET", body?: unknown, proje
   return raw<T>(path, method, body, headers);
 }
 
-export const login = (email: string, password: string) => raw<{ token: string; expiresIn: number }>(
-  "/auth/login", "POST", { email, password }, {});
+export type LoginResult = { token?: string; expiresIn?: number; mfaRequired?: boolean; challenge?: string };
+export const login = (email: string, password: string) => raw<LoginResult>("/auth/login", "POST", { email, password }, {});
+export const completeMfa = (challenge: string, code: string) => raw<{ token: string }>("/auth/mfa", "POST", { challenge, code }, {});
+export const signup = (input: { organizationName: string; name: string; email: string; password: string }) =>
+  raw<{ token: string; projectId: string }>("/auth/signup", "POST", input, {});
+export const startSso = (email: string, next: string | null) => raw<{ url: string }>("/auth/sso/start" + (next ? "?" + new URLSearchParams({ next }) : ""), "POST", { email }, {});
+export const redeemSsoTicket = (ticket: string) => raw<{ token: string }>("/auth/sso/ticket", "POST", { ticket }, {});
 export const getProjects = () => api<Project[]>("/me/projects", "GET", undefined, false);
 export const getAccess = () => api<Access>("/access");
 export const getFlows = () => api<Flow[]>("/flows");
@@ -73,6 +78,12 @@ export const getTokenInfo = (token: string) => raw<{ kind: "invite" | "reset"; e
 export const completeToken = (kind: "invite" | "reset", token: string, password: string) => raw<void>(
   (kind === "invite" ? "/auth/invitations/" : "/auth/password-reset/") + encodeURIComponent(token), "POST", { password }, {});
 
+// Session-only fetch (no project header) that returns the raw response, for organization-level downloads.
+export async function sessionDownload(path: string): Promise<Response> {
+  const jar = await cookies(); const token = jar.get("io_session")?.value; const base = process.env.INTEGRAOPS_API_URL;
+  if (!token || !base) throw new ApiError(401, "Giriş yapmanız gerekli.");
+  return fetch(new URL("/api/v1" + path, base), { headers: { Authorization: "Bearer " + token }, cache: "no-store", redirect: "error", signal: AbortSignal.timeout(120000) });
+}
 // Session-scoped fetch that returns the raw response, for CSV downloads.
 export async function apiDownload(path: string): Promise<Response> {
   const jar = await cookies(); const token = jar.get("io_session")?.value; const project = jar.get("io_project")?.value;

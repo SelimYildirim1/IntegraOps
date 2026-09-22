@@ -4,6 +4,7 @@ using System.Text;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 
 namespace IntegraOps.Infrastructure;
 
@@ -27,7 +28,7 @@ public sealed record TokenPasswordInput(string Password);
 public sealed record AgentHeartbeatInput(string? Name, string? Version, string? Host, string? SourceKind, int? Pending,
     long? SentTotal, long? DeadTotal, long? RetryTotal, string? LastError, string? LastSuccessAt, System.Text.Json.JsonElement? Config);
 public sealed record RetentionInput(int? FinishedTransactionDays, int? NotificationDays, int? AuditDays);
-public sealed record SessionUser(Guid Id, string Email, string Name);
+public sealed record SessionUser(Guid Id, string Email, string Name, bool SystemAdmin = false, bool Mfa = false);
 public sealed record ProjectIdentity(Guid ProjectId, Guid OrganizationId, Guid? UserId, string Role, string? Scope,
     Guid? KeyId = null, Guid? ConnectionId = null);
 
@@ -67,6 +68,10 @@ public static class PilotSecurity
         services.AddSingleton<PostgresReconciliationStore>();
         services.AddSingleton<PostgresReportQueries>();
         services.AddSingleton<PostgresConnectionStore>();
+        services.AddSingleton<PostgresOrganizationStore>();
+        services.AddSingleton<PostgresSecurityStore>();
+        services.TryAddSingleton(TimeProvider.System);
+        services.AddHttpClient("sso", c => c.Timeout = TimeSpan.FromSeconds(10));
         return services;
     }
 }
