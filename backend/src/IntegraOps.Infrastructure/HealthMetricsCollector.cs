@@ -23,7 +23,7 @@ public sealed class HealthMetricsCollector : BackgroundService
 {
     private static readonly string[] Tables =
         ["transactions", "transaction_events", "outbox_messages", "alarms", "alarm_events",
-         "notification_deliveries", "audit_log", "transaction_delays"];
+         "notification_deliveries", "audit_log", "transaction_delays", "transaction_step_stats"];
 
     private readonly NpgsqlDataSource source;
     private readonly ILogger<HealthMetricsCollector> logger;

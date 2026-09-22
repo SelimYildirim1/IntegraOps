@@ -66,7 +66,7 @@ export default function FlowForm({ initialFlow }: { initialFlow?: FlowDetails })
       </div>
       <div className="surface-body" style={{ borderTop: "1px solid var(--line-2)" }}>
         <div className="step-card-head" style={{ marginBottom: 4 }}><p className="legend" style={{ margin: 0 }}>Adımlar</p><span className="count">{steps.length} / 30 adım</span></div>
-        <p className="help">Adımları gerçekleşmesini beklediğiniz sırayla ekleyin. Her süre, bir önceki adımın gerçekleşme anından başlar; en az 1 saniye, en fazla 24 saat.</p>
+        <p className="help">Adımları gerçekleşmesini beklediğiniz sırayla ekleyin. Her süre, bir önceki adımın gerçekleşme anından başlar; en az 1 saniye, en fazla 30 gün.</p>
         {errors.steps && <p className="form-status err" role="alert">{errors.steps}</p>}
 
         <ol className="step-list">{steps.map((step, index) => {
@@ -98,7 +98,7 @@ export default function FlowForm({ initialFlow }: { initialFlow?: FlowDetails })
                 </Field>
                 <Field id={`${prefix}-unit`} label="Birim">
                   <select id={`${prefix}-unit`} value={step.delayUnit} onChange={event => updateStep(step.id, { delayUnit: event.target.value })}>
-                    <option value="seconds">Saniye</option><option value="minutes">Dakika</option><option value="hours">Saat</option>
+                    <option value="seconds">Saniye</option><option value="minutes">Dakika</option><option value="hours">Saat</option><option value="days">Gün</option>
                   </select>
                 </Field>
               </div>}

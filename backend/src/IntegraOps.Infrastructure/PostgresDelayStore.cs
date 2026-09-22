@@ -11,12 +11,12 @@ public sealed class PostgresDelayStore(NpgsqlDataSource dataSource)
         if (batchSize is < 1 or > 500) throw new ArgumentOutOfRangeException(nameof(batchSize));
         await using var connection = await dataSource.OpenConnectionAsync(ct);
         await using var transaction = await connection.BeginTransactionAsync(ct);
-        var candidates = new List<(Guid Id, Guid ProjectId, Guid FlowId)>();
+        var candidates = new List<(Guid Id, Guid ProjectId, Guid VersionId, string? Group)>();
         // The consumer locks the same transaction row. SKIP LOCKED also allows
         // multiple workers without having them process the same candidate together.
         // Missing rows backfill in-progress transactions created before this module.
         await using (var find = Sql.Command(connection, transaction, """
-            SELECT t.id, t.project_id, t.flow_id
+            SELECT t.id, t.project_id, t.flow_version_id, t.group_code
             FROM transactions t LEFT JOIN transaction_delays d ON d.transaction_id = t.id
             WHERE (t.alarm_checked_at IS NULL OR (t.status = 'InProgress'
               AND (d.transaction_id IS NULL OR d.state = 'pending_processing' OR t.updated_at > d.checked_at
@@ -30,18 +30,18 @@ public sealed class PostgresDelayStore(NpgsqlDataSource dataSource)
         await using (var reader = await find.ExecuteReaderAsync(ct))
         {
             while (await reader.ReadAsync(ct))
-                candidates.Add((reader.GetGuid(0), reader.GetGuid(1), reader.GetGuid(2)));
+                candidates.Add((reader.GetGuid(0), reader.GetGuid(1), reader.GetGuid(2), reader.IsDBNull(3) ? null : reader.GetString(3)));
         }
 
         foreach (var candidate in candidates)
         {
             var flow = await PostgresTrackingStore.LoadFlowAsync(connection, transaction,
-                candidate.ProjectId, null, candidate.FlowId, ct)
-                ?? throw new InvalidDataException("Gecikme kontrolü için akış bulunamadı.");
+                candidate.ProjectId, null, null, ct, candidate.VersionId)
+                ?? throw new InvalidDataException("Gecikme kontrolü için akış sürümü bulunamadı.");
             var events = await PostgresTrackingStore.LoadEventsAsync(connection, transaction,
                 candidate.ProjectId, candidate.Id, ct);
             await RefreshAsync(connection, transaction, flow, candidate.Id,
-                TimelineProjector.Project(flow, events), ct);
+                TimelineProjector.Project(flow, events, candidate.Group), ct);
         }
         await transaction.CommitAsync(ct);
         return candidates.Count;
@@ -61,7 +61,7 @@ public sealed class PostgresDelayStore(NpgsqlDataSource dataSource)
         var now = new DateTimeOffset((DateTime)(await clock.ExecuteScalarAsync(ct))!);
         var assessment = hasPendingEvents
             ? new DelayAssessment("pending_processing", null, null, null)
-            : DelayEvaluator.Evaluate(projection, now);
+            : DelayEvaluator.Evaluate(projection, now, flow);
 
         await using var update = Sql.Command(connection, transaction, """
             INSERT INTO transaction_delays

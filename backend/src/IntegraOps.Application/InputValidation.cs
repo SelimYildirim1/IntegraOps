@@ -43,8 +43,8 @@ public static partial class InputValidation
                     errors[$"steps[{i}].code"] = ["Adım kodları farklı olmalı."];
                 if (i == 0 && step.MaxDelaySeconds is not null)
                     errors[$"steps[{i}].maxDelaySeconds"] = ["Başlangıç adımının önceki adıma göre süresi yoktur."];
-                if (i > 0 && (step.MaxDelaySeconds is null or < 1 or > 86400))
-                    errors[$"steps[{i}].maxDelaySeconds"] = ["Önceki adımdan sonraki süre 1–86400 saniye olmalı."];
+                if (i > 0 && (step.MaxDelaySeconds is null or < 1 or > 2592000))
+                    errors[$"steps[{i}].maxDelaySeconds"] = ["Önceki adımdan sonraki süre 1–2592000 saniye (30 gün) olmalı."];
             }
         }
         ThrowIfInvalid(errors);
@@ -71,11 +71,13 @@ public static partial class InputValidation
         else if (occurredAt > now.AddMinutes(5))
             errors["occurredAt"] = ["Olay zamanı sunucu saatinin 5 dakikadan fazla ilerisinde olamaz."];
         if (request.Error?.Length > 2000) errors["error"] = ["Hata açıklaması en fazla 2000 karakter olabilir."];
+        var group = string.IsNullOrWhiteSpace(request.Group) ? null : request.Group.Trim();
+        if (group is not null) Code(errors, "group", group);
         if (request.Status == "completed" && !string.IsNullOrWhiteSpace(request.Error))
             errors["error"] = ["Tamamlanan olayda hata açıklaması gönderilmemeli."];
         ThrowIfInvalid(errors);
         return new ValidatedEvent(request.EventId, request.Flow!, request.TransactionId!, request.Step!,
-            status, occurredAt.ToUniversalTime(), string.IsNullOrWhiteSpace(request.Error) ? null : request.Error);
+            status, occurredAt.ToUniversalTime(), string.IsNullOrWhiteSpace(request.Error) ? null : request.Error, group);
     }
 
     private static void Code(Dictionary<string, string[]> errors, string field, string? value)

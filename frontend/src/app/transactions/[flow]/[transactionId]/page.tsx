@@ -30,7 +30,7 @@ export default async function Detail({ params }: {
   return <>
     <PageHead crumb={{ href: `/?${new URLSearchParams({ flow })}`, label: "İşlem listesi" }}
       title={<span className="mono">{item.transactionId}</span>}
-      lede={<>{item.flow} akışı. {number(item.acceptedEventCount)} bildirim kabul edildi, {number(item.processedEventCount)} işlendi.</>}>
+      lede={<>{item.flow} akışı, {item.flowVersion}. sürüm{item.calendar ? `, ${item.calendar} takvimi` : ""}{item.group ? <>, grup <span className="mono">{item.group}</span></> : ""}. {number(item.acceptedEventCount)} bildirim kabul edildi, {number(item.processedEventCount)} işlendi.</>}>
       <Badge value={item.status} /><RefreshControls />
     </PageHead>
 

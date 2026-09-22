@@ -388,3 +388,11 @@ th.right, td.right { text-align: right; }
 .details > * + * { margin-top: 12px; }
 .field textarea { resize: vertical; }
 .muted { color: var(--ink-3); }
+
+/* V1.2: sürüm düzenleyici ve takvimler */
+.inline-fields { display: grid; grid-template-columns: minmax(0, 1fr) 120px; gap: 8px; }
+.day-picks { display: flex; gap: 14px; flex-wrap: wrap; }
+.calendar-card { padding: 12px 14px; border: 1px solid var(--line-2); border-radius: var(--radius-s); }
+.calendar-card summary { color: var(--ink); }
+.flow-editor .form-actions .field { min-width: 220px; }
+td.late { color: var(--bad); }

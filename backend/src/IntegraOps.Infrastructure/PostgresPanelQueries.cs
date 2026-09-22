@@ -10,11 +10,13 @@ public sealed class PostgresPanelQueries(NpgsqlDataSource dataSource) : IPanelQu
     {
         await using var connection = await dataSource.OpenConnectionAsync(ct);
         await using var command = Sql.Command(connection, null, """
-            SELECT f.id, f.code, f.name, count(s.code)::integer AS step_count
+            SELECT f.id, f.code, f.name,
+                   COALESCE((SELECT count(*)::integer FROM flow_version_steps s WHERE s.version_id = v.id), 0) AS step_count
             FROM flows f
-            LEFT JOIN flow_steps s ON s.flow_id = f.id
+            LEFT JOIN LATERAL (
+                SELECT id FROM flow_versions WHERE flow_id = f.id AND state = 'published' AND effective_from <= clock_timestamp()
+                ORDER BY version DESC LIMIT 1) v ON true
             WHERE f.project_id = @projectId
-            GROUP BY f.id, f.code, f.name
             ORDER BY f.name, f.code
             """, ("projectId", projectId));
 

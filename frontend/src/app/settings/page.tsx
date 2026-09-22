@@ -1,5 +1,5 @@
 import { api, apiMessage, getAccess } from "@/lib/api";
-import type { Member, ProjectKey, Channel, RetentionInfo } from "@/lib/pilot-types";
+import type { Member, ProjectKey, Channel, RetentionInfo, Calendar } from "@/lib/pilot-types";
 import { roleNames } from "@/lib/pilot-types";
 import { Message, number, PageHead, Time } from "@/components/ui";
 import ActionForm from "@/components/action-form";
@@ -11,13 +11,31 @@ function Op({ value, id }: { value: string; id?: string }) {
   return <><input type="hidden" name="op" value={value} />{id && <input type="hidden" name="id" value={id} />}</>;
 }
 const scopeNames: Record<string, string> = { ingest: "Bildirim gönderir", read: "Takip verilerini okur", legacy: "Eski geniş yetki" };
+const dayNames: Record<number, string> = { 1: "Pzt", 2: "Sal", 3: "Çar", 4: "Per", 5: "Cum", 6: "Cmt", 7: "Paz" };
+
+function CalendarForm({ calendar }: { calendar?: Calendar }) {
+  const p = calendar ? `cal-${calendar.id.slice(0, 8)}` : "cal-new";
+  return <ActionForm action={adminAction} label={calendar ? "Takvimi kaydet" : "Takvim oluştur"}>
+    <Op value={calendar ? "calendar-update" : "calendar-create"} id={calendar?.id} />
+    <div className="form-grid">
+      <div className="field"><label htmlFor={`${p}-name`}>Takvim adı</label><input id={`${p}-name`} name="name" required maxLength={120} defaultValue={calendar?.name ?? ""} placeholder="Mesai saatleri" /></div>
+      <div className="field"><label htmlFor={`${p}-tz`}>Saat dilimi</label><input id={`${p}-tz`} name="timezone" required maxLength={64} defaultValue={calendar?.timezone ?? "Europe/Istanbul"} /></div>
+      <div className="field"><label htmlFor={`${p}-start`}>Başlangıç saati</label><input id={`${p}-start`} name="startTime" type="time" required defaultValue={calendar?.start_time ?? "09:00"} /></div>
+      <div className="field"><label htmlFor={`${p}-end`}>Bitiş saati</label><input id={`${p}-end`} name="endTime" type="time" required defaultValue={calendar?.end_time ?? "18:00"} /></div>
+      <div className="field" style={{ gridColumn: "1 / -1" }}><span className="label">Çalışma günleri</span>
+        <div className="day-picks">{[1, 2, 3, 4, 5, 6, 7].map(d => <label key={d} className="toggle"><input type="checkbox" name="workDays" value={d} defaultChecked={calendar ? calendar.work_days.includes(d) : d <= 5} />{dayNames[d]}</label>)}</div></div>
+      <div className="field" style={{ gridColumn: "1 / -1" }}><label htmlFor={`${p}-hol`}>Tatiller (her satır: YYYY-AA-GG ad)</label>
+        <textarea id={`${p}-hol`} name="holidays" rows={4} defaultValue={(calendar?.holidays ?? []).map(h => `${h.day} ${h.name}`.trim()).join("\n")} placeholder={"2026-10-29 Cumhuriyet Bayramı"} /></div>
+    </div>
+  </ActionForm>;
+}
 
 export default async function SettingsPage() {
-  let members: Member[], keys: ProjectKey[], channels: Channel[], retention: RetentionInfo;
+  let members: Member[], keys: ProjectKey[], channels: Channel[], retention: RetentionInfo, calendars: Calendar[];
   try {
     const access = await getAccess();
     if (access.role !== "owner") return <Message title="Proje ayarları" description="Kullanıcıları, anahtarları ve bildirim kanallarını yalnızca proje sahibi yönetir." />;
-    [members, keys, channels, retention] = await Promise.all([api<Member[]>("/members"), api<ProjectKey[]>("/keys"), api<Channel[]>("/channels"), api<RetentionInfo>("/retention")]);
+    [members, keys, channels, retention, calendars] = await Promise.all([api<Member[]>("/members"), api<ProjectKey[]>("/keys"), api<Channel[]>("/channels"), api<RetentionInfo>("/retention"), api<Calendar[]>("/calendars")]);
   } catch (e) { return <Message title="Ayarlar yüklenemedi" description={apiMessage(e)} />; }
   const activeKeys = keys.filter(k => !k.revoked_at), revokedKeys = keys.filter(k => k.revoked_at);
   const p = retention.policy;
@@ -109,6 +127,18 @@ export default async function SettingsPage() {
               <span className="hint">Boş bırakılırsa üretilir ve bir kez gösterilir. E-posta kanalında kullanılmaz.</span></div>
           </div>
         </ActionForm>
+      </div>
+    </section>
+
+    <section className="surface" id="calendars">
+      <div className="surface-head"><div><h2>Çalışma takvimleri</h2><p>Bir akış sürümüne takvim bağlandığında süreler yalnızca çalışma günleri ve saatlerinde işler; tatiller atlanır.</p></div>
+        <span className="count">{calendars.length} takvim</span></div>
+      <div className="surface-body">
+        {calendars.map(c => <details key={c.id} className="details calendar-card"><summary><strong>{c.name}</strong> · {c.timezone} · {c.start_time}–{c.end_time} · {c.work_days.map(d => dayNames[d]).join(", ")}{c.version_count > 0 && ` · ${c.version_count} sürümde kullanılıyor`}</summary>
+          <CalendarForm calendar={c} />
+          {c.version_count === 0 && <ActionForm action={adminAction} label="Takvimi sil" compact tone="danger"><Op value="calendar-delete" id={c.id} /></ActionForm>}
+        </details>)}
+        <details className="details"><summary>Yeni takvim</summary><CalendarForm /></details>
       </div>
     </section>
 

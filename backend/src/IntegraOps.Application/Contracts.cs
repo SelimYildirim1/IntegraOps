@@ -9,10 +9,10 @@ public sealed record CreateFlowStep(string Code, string Name, int? MaxDelaySecon
 public sealed record CreateFlowRequest(string Code, string Name, IReadOnlyList<CreateFlowStep> Steps);
 public sealed record SubmitEventRequest(
     Guid EventId, string Flow, string TransactionId, string Step,
-    string Status, string OccurredAt, string? Error = null);
+    string Status, string OccurredAt, string? Error = null, string? Group = null);
 public sealed record ValidatedEvent(
     Guid EventId, string Flow, string TransactionId, string Step,
-    EventStatus Status, DateTimeOffset OccurredAt, string? Error);
+    EventStatus Status, DateTimeOffset OccurredAt, string? Error, string? Group = null);
 public sealed record EventReceipt(
     Guid EventId, Guid TransactionRecordId, bool Duplicate, DateTimeOffset AcceptedAt);
 public sealed record DelayView(
@@ -22,7 +22,7 @@ public sealed record TransactionView(
     Guid Id, string Flow, string TransactionId, TransactionStatus Status,
     int AcceptedEventCount, int ProcessedEventCount,
     IReadOnlyList<TimelineStep> Steps, IReadOnlyList<ObservedEvent> Events,
-    DelayView? Delay = null);
+    DelayView? Delay = null, int FlowVersion = 1, string? Group = null, string? Calendar = null);
 
 public interface ITrackingStore
 {

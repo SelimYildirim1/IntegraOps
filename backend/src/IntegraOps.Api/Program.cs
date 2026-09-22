@@ -175,10 +175,10 @@ projectApi.MapGet("/transactions/summary", async (
 });
 
 projectApi.MapGet("/flows/{flow}", async (
-    HttpContext context, IFlowQueries queries, string flow, CancellationToken ct) =>
+    HttpContext context, PostgresFlowVersionStore versions, string flow, CancellationToken ct) =>
 {
     var access = (ProjectAccess)context.Items[typeof(ProjectAccess)]!;
-    var result = await queries.GetAsync(access.ProjectId, flow, ct);
+    var result = await versions.Overview(access.ProjectId, InputValidation.FlowCode(flow), ct);
     return result is null
         ? Results.Problem(statusCode: 404, title: "Akış bu projede bulunamadı.")
         : Results.Ok(result);

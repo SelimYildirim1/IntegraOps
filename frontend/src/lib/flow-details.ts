@@ -1,9 +1,24 @@
+export type FlowStepDetails = { code: string; name: string; position: number; maxDelaySeconds: number | null; overrides?: Record<string, number> };
+export type FlowVersionRow = {
+  id: string; version: number; state: "draft" | "published"; effective_from: string | null; published_at: string | null;
+  note: string; created_at: string; calendar: string | null; created_by: string | null; step_count: number; transaction_count: number; effective: boolean;
+};
 export type FlowDetails = {
   id: string;
   code: string;
   name: string;
-  steps: { code: string; name: string; position: number; maxDelaySeconds: number | null }[];
+  version: number | null;
+  versionId: string | null;
+  calendar: string | null;
+  steps: FlowStepDetails[];
+  versions: FlowVersionRow[];
+  hasDraft: boolean;
 };
+export type FlowVersionDetails = {
+  flow: string; name: string; version: number; state: "draft" | "published"; effectiveFrom: string | null; publishedAt: string | null;
+  calendarId: string | null; note: string; steps: FlowStepDetails[];
+};
+export type FlowDiffResult = { from: number; to: number; changes: { kind: string; code: string; detail: string | null }[] };
 
 export type TestEventPayload = {
   eventId: string; flow: string; transactionId: string;
@@ -16,14 +31,16 @@ export type TestEventResult =
 
 export function duration(seconds: number | null) {
   if (seconds === null) return "Başlangıç adımı";
-  const hours = Math.floor(seconds / 3600);
+  const days = Math.floor(seconds / 86400);
+  const hours = Math.floor((seconds % 86400) / 3600);
   const minutes = Math.floor((seconds % 3600) / 60);
   const rest = seconds % 60;
-  return [hours && `${hours} saat`, minutes && `${minutes} dakika`, rest && `${rest} saniye`].filter(Boolean).join(" ");
+  return [days && `${days} gün`, hours && `${hours} saat`, minutes && `${minutes} dakika`, rest && `${rest} saniye`].filter(Boolean).join(" ");
 }
 
 export function delayDraft(seconds: number | null) {
   if (seconds === null) return { delayValue: "", delayUnit: "minutes" };
+  if (seconds % 86400 === 0) return { delayValue: String(seconds / 86400), delayUnit: "days" };
   if (seconds % 3600 === 0) return { delayValue: String(seconds / 3600), delayUnit: "hours" };
   if (seconds % 60 === 0) return { delayValue: String(seconds / 60), delayUnit: "minutes" };
   return { delayValue: String(seconds), delayUnit: "seconds" };

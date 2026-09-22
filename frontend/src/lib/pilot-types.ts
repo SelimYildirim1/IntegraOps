@@ -5,6 +5,16 @@ export type ActionState = { message: string; ok?: boolean; secret?: string };
 export type Member = { id: string; name: string; email: string; role: Role; activated: boolean };
 export type Assignee = { id: string; name: string; role: Role };
 export type SavedView = { id: string; kind: "transactions" | "alarms"; name: string; query: string; created_at: string };
+export type Calendar = {
+  id: string; name: string; timezone: string; work_days: number[]; start_time: string; end_time: string;
+  version_count: number; holidays: { day: string; name: string }[];
+};
+export type BreachReport = {
+  items: { business_id: string; flow: string; step_code: string; started_at: string; completed_at: string;
+    elapsed_seconds: number; allowance_seconds: number; group_code: string | null; is_test: boolean }[];
+  total: number; page: number; pageSize: number;
+  byStep: { flow: string; step_code: string; breached: number; total: number; avg_elapsed: number; allowance: number }[];
+};
 export type RetentionInfo = {
   policy: { finished_transaction_days: number | null; notification_days: number | null; audit_days: number | null; updated_at: string | null };
   runs: { ran_at: string; transactions_deleted: number; deliveries_deleted: number; audit_deleted: number }[];
