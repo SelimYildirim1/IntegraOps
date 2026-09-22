@@ -123,6 +123,39 @@ public static class PilotEndpoints
             => Results.Ok(await q.Operations(Actor(c).ProjectId, ct))).WithMetadata(new ProjectRule("owner"));
 
         MapOperations(app, projectApi);
+        MapVersions(projectApi);
+    }
+
+    /// <summary>V1.2: flow drafts and versions, calendars, breach report.</summary>
+    private static void MapVersions(RouteGroupBuilder projectApi)
+    {
+        static string Code(string flow) => IntegraOps.Application.InputValidation.FlowCode(flow);
+        projectApi.MapGet("/flows/{flow}/versions/{number:int}", async (HttpContext c, string flow, int number, PostgresFlowVersionStore s, CancellationToken ct)
+            => Results.Ok(await s.Version(Actor(c).ProjectId, Code(flow), number, ct))).WithMetadata(new ProjectRule());
+        projectApi.MapGet("/flows/{flow}/versions/{from:int}/diff/{to:int}", async (HttpContext c, string flow, int from, int to, PostgresFlowVersionStore s, CancellationToken ct)
+            => Results.Ok(await s.Diff(Actor(c).ProjectId, Code(flow), from, to, ct))).WithMetadata(new ProjectRule());
+        projectApi.MapPost("/flows/{flow}/versions", async (HttpContext c, string flow, PostgresFlowVersionStore s, CancellationToken ct)
+            => Results.Json(await s.CreateDraft(Actor(c), Code(flow), ct), statusCode: 201)).WithMetadata(new ProjectRule("owner,operator"));
+        projectApi.MapPut("/flows/{flow}/versions/{number:int}", async (HttpContext c, string flow, int number, VersionInput input, PostgresFlowVersionStore s, CancellationToken ct) =>
+        { await s.UpdateDraft(Actor(c), Code(flow), number, input, ct); return Results.NoContent(); }).WithMetadata(new ProjectRule("owner,operator"));
+        projectApi.MapPost("/flows/{flow}/versions/{number:int}/publish", async (HttpContext c, string flow, int number, PublishInput input, PostgresFlowVersionStore s, CancellationToken ct)
+            => Results.Ok(await s.Publish(Actor(c), Code(flow), number, input, ct))).WithMetadata(new ProjectRule("owner,operator"));
+        projectApi.MapDelete("/flows/{flow}/versions/{number:int}", async (HttpContext c, string flow, int number, PostgresFlowVersionStore s, CancellationToken ct) =>
+        { await s.DeleteDraft(Actor(c), Code(flow), number, ct); return Results.NoContent(); }).WithMetadata(new ProjectRule("owner,operator"));
+        projectApi.MapPut("/flows/{flow}", async (HttpContext c, string flow, FlowNameInput input, PostgresFlowVersionStore s, CancellationToken ct) =>
+        { await s.Rename(Actor(c), Code(flow), input, ct); return Results.NoContent(); }).WithMetadata(new ProjectRule("owner,operator"));
+
+        projectApi.MapGet("/calendars", async (HttpContext c, PostgresFlowVersionStore s, CancellationToken ct)
+            => Results.Ok(await s.Calendars(Actor(c).ProjectId, ct))).WithMetadata(new ProjectRule());
+        projectApi.MapPost("/calendars", async (HttpContext c, CalendarInput input, PostgresFlowVersionStore s, CancellationToken ct)
+            => Results.Json(await s.SaveCalendar(Actor(c), null, input, ct), statusCode: 201)).WithMetadata(new ProjectRule("owner,operator"));
+        projectApi.MapPut("/calendars/{id:guid}", async (HttpContext c, Guid id, CalendarInput input, PostgresFlowVersionStore s, CancellationToken ct)
+            => Results.Ok(await s.SaveCalendar(Actor(c), id, input, ct))).WithMetadata(new ProjectRule("owner,operator"));
+        projectApi.MapDelete("/calendars/{id:guid}", async (HttpContext c, Guid id, PostgresFlowVersionStore s, CancellationToken ct) =>
+        { await s.DeleteCalendar(Actor(c), id, ct); return Results.NoContent(); }).WithMetadata(new ProjectRule("owner,operator"));
+
+        projectApi.MapGet("/reports/breaches", async (HttpContext c, PostgresFlowVersionStore s, string? flow, string? from, string? to, string? test, int? page, CancellationToken ct)
+            => Results.Ok(await s.Breaches(Actor(c).ProjectId, flow, from, to, test, page ?? 1, ct))).WithMetadata(new ProjectRule());
     }
 
     /// <summary>V1.1: saved views, invitations, password reset, retention and CSV exports.</summary>

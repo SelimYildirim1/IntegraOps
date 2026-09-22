@@ -35,6 +35,7 @@ export type TransactionDetail = {
   id: string; flow: string; transactionId: string; status: TransactionStatus;
   acceptedEventCount: number; processedEventCount: number;
   steps: TimelineStep[]; events: ObservedEvent[]; delay: DelayInfo | null;
+  flowVersion: number; group: string | null; calendar: string | null;
 };
 export type Filters = {
   flow: string; status: string; delay: string; page: number; pageSize: number;

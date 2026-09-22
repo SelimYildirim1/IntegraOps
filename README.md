@@ -21,6 +21,7 @@ IntegraOps, farklı sistemlerden gelen iş olaylarını aynı işlem altında bi
 - Sistem sağlığı: OpenTelemetry ölçümleri, Prometheus alarm kuralları, Grafana panosu.
 - Canlı işletim: imaj tabanlı yayın, geri dönüş, sunucu dışı yedek ve geri yükleme betikleri.
 - V1.1: işlem arama, tarih filtreleri, kayıtlı görünümler, test verisi ayrımı, alarm sorumlusu ve notları, e-posta daveti, parola sıfırlama, veri saklama, CSV dışa aktarım.
+- V1.2: akış taslağı ve sürümleri, ileri tarihli etkinleşme, sürüm farkı, çalışma takvimleri, grup bazlı süreler, süre ihlali raporu.
 
 ## Gerekenler
 
@@ -118,6 +119,7 @@ Mailpit, webhook ve kaynak örneği de çalışırken kapsamlı V1 kontrolü:
 ```bash
 python3 scripts/verify_v1.py --load 100
 python3 scripts/verify_v1_1.py
+python3 scripts/verify_v1_2.py
 ```
 
 Kesinti provası için ayrı, uygun yerel test zamanında:
@@ -152,8 +154,8 @@ Ardından `POST http://localhost:8081/orders/DEMO-MANUAL-001/invoice` adresine `
 - `occurredAt` saat dilimi içermelidir; adımın durumu teslim sırasına değil olay zamanına göre seçilir.
 - `not_observed`, bildirimin görülmediğini belirtir. Dış sistemin işi yapmadığını kanıtlamaz.
 - Gecikme `failed` anlamına gelmez; kaynak açıkça hata bildirmelidir.
-- Akışlar 2–30 sıralı adımdır. İlk adımda süre yoktur; diğerleri 1–86400 saniyedir.
-- Süreler mevcut akışta değiştirilmez. Yeni kodla kopya oluşturulur; kaynak yeni işlemler için yeni kodu kullanır.
+- Akışlar 2–30 sıralı adımdır. İlk adımda süre yoktur; diğerleri 1 saniye–30 gündür.
+- Yayınlanan akış sürümü değişmez. Değişiklik yeni sürüm taslağıyla yapılır ve yayınlanır; devam eden işlemler başladıkları sürümde kalır.
 - İşlem detayındaki süre farkı iş olaylarının zamanları arasındadır. Negatif fark zaman tutarsızlığı olarak gösterilir; işlem durumunu panel değiştirmez.
 - Sistem ekranındaki işlenmemiş olay sayısı, henüz kuyruğa yayımlanmamış olayları da içerir. İki sayaç toplanmaz.
 - Panelden oluşturulan TEST- işlemleri gerçek kayıtlardır ve sayılara dahildir.
@@ -205,6 +207,7 @@ Gerçek kaynak sistemin bağlanması için sözleşme `docs/entegrasyon-sozlesme
 - `docs/v1-paket-01.md`: İlk düzeltme paketinin değişiklikleri ve doğrulama sınırları.
 - `docs/v1-paket-02-kabul.md`: Kurtarma provası kabul kaydı.
 - `docs/v1-1.md`: V1.1 günlük kullanım özellikleri ve doğrulaması.
+- `docs/v1-2.md`: V1.2 akış sürümleme ve süre kuralları.
 - `docs/entegrasyon-sozlesmesi.md`: Gerçek kaynak sistem için olay, kimlik ve kuyruk kuralları.
 - `docs/izleme.md` ve `docs/canli-ortam.md`: Sistem sağlığı izleme ve canlı işletim rehberleri.
 - `IntegraOps_V1_00_Kurulum_ve_Test.md`: V1 modüllerinin ayrıntılı kurulum açıklaması.

@@ -51,26 +51,21 @@ public sealed class PostgresTrackingStore(NpgsqlDataSource dataSource) : ITracki
         await using var transaction = await connection.BeginTransactionAsync(ct);
         try
         {
+            var versionId = Guid.CreateVersion7();
             await using (var insert = Sql.Command(connection, transaction, """
-                INSERT INTO flows (id, project_id, code, name) VALUES (@id, @projectId, @code, @name)
-                """, ("id", flowId), ("projectId", projectId), ("code", request.Code), ("name", request.Name.Trim())))
+                INSERT INTO flows (id, project_id, code, name) VALUES (@id, @projectId, @code, @name);
+                INSERT INTO flow_versions (id, flow_id, version, state, effective_from, published_at)
+                VALUES (@versionId, @id, 1, 'published', clock_timestamp(), clock_timestamp())
+                """, ("id", flowId), ("projectId", projectId), ("code", request.Code), ("name", request.Name.Trim()), ("versionId", versionId)))
                 await insert.ExecuteNonQueryAsync(ct);
-            foreach (var step in steps)
-            {
-                await using var insert = Sql.Command(connection, transaction, """
-                    INSERT INTO flow_steps (flow_id, code, name, position, max_delay_seconds)
-                    VALUES (@flowId, @code, @name, @position, CAST(@delay AS integer))
-                    """, ("flowId", flowId), ("code", step.Code), ("name", step.Name),
-                    ("position", step.Position), ("delay", step.MaxDelaySeconds));
-                await insert.ExecuteNonQueryAsync(ct);
-            }
+            await FlowVersions.InsertStepsAsync(connection, transaction, versionId, steps, ct);
             await transaction.CommitAsync(ct);
+            return new FlowDefinition(flowId, projectId, request.Code, request.Name.Trim(), steps, versionId, 1);
         }
         catch (PostgresException ex) when (ex.SqlState == PostgresErrorCodes.UniqueViolation)
         {
             throw new ResourceConflictException("Bu projede aynı kodla bir akış zaten var.");
         }
-        return new FlowDefinition(flowId, projectId, request.Code, request.Name.Trim(), steps);
     }
 
     public async Task<EventReceipt> AcceptAsync(Guid projectId, ValidatedEvent request, CancellationToken ct)
@@ -78,25 +73,41 @@ public sealed class PostgresTrackingStore(NpgsqlDataSource dataSource) : ITracki
         var fingerprint = Hash(JsonSerializer.Serialize(request));
         await using var connection = await dataSource.OpenConnectionAsync(ct);
         await using var transaction = await connection.BeginTransactionAsync(ct);
-        var flow = await LoadFlowAsync(connection, transaction, projectId, request.Flow, null, ct)
+        // New transactions bind to the version effective now; existing ones keep theirs.
+        var effective = await LoadFlowAsync(connection, transaction, projectId, request.Flow, null, ct)
             ?? throw new ResourceNotFoundException("Akış bu projede bulunamadı.");
-        if (!flow.Steps.Any(s => s.Code == request.Step))
-            throw new RequestValidationException(new() { ["step"] = ["Bu adım akışta tanımlı değil."] });
 
         // The uniqueness constraint serializes simultaneous creation of the same business transaction.
         await using (var insert = Sql.Command(connection, transaction, """
-            INSERT INTO transactions (id, project_id, flow_id, business_id, is_test)
-            VALUES (@id, @projectId, @flowId, @businessId, @businessId LIKE 'TEST-%')
+            INSERT INTO transactions (id, project_id, flow_id, business_id, is_test, flow_version_id, group_code)
+            VALUES (@id, @projectId, @flowId, @businessId, @businessId LIKE 'TEST-%', @versionId, @group)
             ON CONFLICT (project_id, flow_id, business_id) DO NOTHING
             """, ("id", Guid.CreateVersion7()), ("projectId", projectId),
-            ("flowId", flow.Id), ("businessId", request.TransactionId)))
+            ("flowId", effective.Id), ("businessId", request.TransactionId), ("versionId", effective.VersionId), ("group", request.Group)))
             await insert.ExecuteNonQueryAsync(ct);
 
-        Guid transactionId;
+        Guid transactionId; Guid versionId; string? group;
         await using (var find = Sql.Command(connection, transaction, """
-            SELECT id FROM transactions WHERE project_id = @projectId AND flow_id = @flowId AND business_id = @businessId
-            """, ("projectId", projectId), ("flowId", flow.Id), ("businessId", request.TransactionId)))
-            transactionId = (Guid)(await find.ExecuteScalarAsync(ct))!;
+            SELECT id, flow_version_id, group_code FROM transactions
+            WHERE project_id = @projectId AND flow_id = @flowId AND business_id = @businessId FOR UPDATE
+            """, ("projectId", projectId), ("flowId", effective.Id), ("businessId", request.TransactionId)))
+        await using (var reader = await find.ExecuteReaderAsync(ct))
+        {
+            await reader.ReadAsync(ct);
+            transactionId = reader.GetGuid(0); versionId = reader.GetGuid(1); group = reader.IsDBNull(2) ? null : reader.GetString(2);
+        }
+        var flow = versionId == effective.VersionId ? effective
+            : await LoadFlowAsync(connection, transaction, projectId, null, effective.Id, ct, versionId)
+                ?? throw new InvalidDataException("İşlemin akış sürümü bulunamadı.");
+        if (!flow.Steps.Any(s => s.Code == request.Step))
+            throw new RequestValidationException(new() { ["step"] = [flow.Version == effective.Version
+                ? "Bu adım akışta tanımlı değil."
+                : $"Bu adım işlemin başladığı {flow.Version}. sürümde tanımlı değil."] });
+        // The first group reported for a transaction sticks; later events cannot move it.
+        if (group is null && request.Group is not null)
+            await using (var setGroup = Sql.Command(connection, transaction,
+                "UPDATE transactions SET group_code = @group WHERE id = @id AND group_code IS NULL", ("group", request.Group), ("id", transactionId)))
+                await setGroup.ExecuteNonQueryAsync(ct);
 
         object? acceptedAt;
         await using (var insert = Sql.Command(connection, transaction, """
@@ -142,24 +153,29 @@ public sealed class PostgresTrackingStore(NpgsqlDataSource dataSource) : ITracki
         await using var connection = await dataSource.OpenConnectionAsync(ct);
         // Keep the accepted count, processed events and flow definition in one consistent snapshot.
         await using var transaction = await connection.BeginTransactionAsync(IsolationLevel.RepeatableRead, ct);
-        var flow = await LoadFlowAsync(connection, transaction, projectId, flowCode, null, ct);
-        if (flow is null) return null;
         await using var find = Sql.Command(connection, transaction, """
-            SELECT id FROM transactions WHERE project_id = @projectId AND flow_id = @flowId AND business_id = @businessId
-            """, ("projectId", projectId), ("flowId", flow.Id), ("businessId", businessId));
-        var foundId = await find.ExecuteScalarAsync(ct);
-        if (foundId is not Guid id) return null;
+            SELECT t.id, t.flow_version_id, t.group_code FROM transactions t JOIN flows f ON f.id = t.flow_id
+            WHERE t.project_id = @projectId AND f.code = @flow AND t.business_id = @businessId
+            """, ("projectId", projectId), ("flow", flowCode), ("businessId", businessId));
+        Guid id; Guid versionId; string? group;
+        await using (var reader = await find.ExecuteReaderAsync(ct))
+        {
+            if (!await reader.ReadAsync(ct)) return null;
+            id = reader.GetGuid(0); versionId = reader.GetGuid(1); group = reader.IsDBNull(2) ? null : reader.GetString(2);
+        }
+        var flow = await LoadFlowAsync(connection, transaction, projectId, null, null, ct, versionId)
+            ?? throw new InvalidDataException("İşlemin akış sürümü bulunamadı.");
         var events = await LoadEventsAsync(connection, transaction, projectId, id, ct);
         await using var count = Sql.Command(connection, transaction,
             "SELECT count(*) FROM transaction_events WHERE project_id = @projectId AND transaction_id = @id",
             ("projectId", projectId), ("id", id));
         var acceptedCount = checked((int)(long)(await count.ExecuteScalarAsync(ct))!);
-        var projection = TimelineProjector.Project(flow, events);
+        var projection = TimelineProjector.Project(flow, events, group);
         var delay = await PostgresDelayStore.ReadAsync(connection, transaction, projectId, id,
             projection, acceptedCount > events.Count, ct);
         await transaction.CommitAsync(ct);
         return new TransactionView(id, flow.Code, businessId, projection.Status,
-            acceptedCount, events.Count, projection.Steps, events, delay);
+            acceptedCount, events.Count, projection.Steps, events, delay, flow.Version, group, flow.Calendar?.Name);
     }
 
     /// <returns>The API acceptance time when this call processed the event; null for a harmless redelivery.</returns>
@@ -167,10 +183,9 @@ public sealed class PostgresTrackingStore(NpgsqlDataSource dataSource) : ITracki
     {
         await using var connection = await dataSource.OpenConnectionAsync(ct);
         await using var transaction = await connection.BeginTransactionAsync(ct);
-        Guid transactionId;
-        Guid flowId;
+        Guid transactionId; Guid versionId; string? group;
         await using (var find = Sql.Command(connection, transaction, """
-            SELECT t.id, t.flow_id FROM transactions t
+            SELECT t.id, t.flow_version_id, t.group_code FROM transactions t
             JOIN transaction_events e ON e.transaction_id = t.id AND e.project_id = t.project_id
             WHERE e.project_id = @projectId AND e.event_id = @eventId FOR UPDATE OF t
             """, ("projectId", pointer.ProjectId), ("eventId", pointer.EventId)))
@@ -178,7 +193,8 @@ public sealed class PostgresTrackingStore(NpgsqlDataSource dataSource) : ITracki
         {
             if (!await reader.ReadAsync(ct)) throw new InvalidDataException("Kuyrukta karşılığı olmayan olay kimliği var.");
             transactionId = reader.GetGuid(0);
-            flowId = reader.GetGuid(1);
+            versionId = reader.GetGuid(1);
+            group = reader.IsDBNull(2) ? null : reader.GetString(2);
         }
 
         DateTimeOffset receivedAt;
@@ -195,47 +211,25 @@ public sealed class PostgresTrackingStore(NpgsqlDataSource dataSource) : ITracki
             }
             receivedAt = new DateTimeOffset(DateTime.SpecifyKind(received, DateTimeKind.Utc));
         }
-        var flow = await LoadFlowAsync(connection, transaction, pointer.ProjectId, null, flowId, ct)
-            ?? throw new InvalidDataException("Akış kaydı bulunamadı.");
+        var flow = await LoadFlowAsync(connection, transaction, pointer.ProjectId, null, null, ct, versionId)
+            ?? throw new InvalidDataException("Akış sürümü bulunamadı.");
         var events = await LoadEventsAsync(connection, transaction, pointer.ProjectId, transactionId, ct);
-        var projection = TimelineProjector.Project(flow, events);
+        var projection = TimelineProjector.Project(flow, events, group);
         await using (var update = Sql.Command(connection, transaction, """
             UPDATE transactions SET status = @status, updated_at = clock_timestamp()
             WHERE id = @id AND project_id = @projectId
             """, ("status", projection.Status.ToString()), ("id", transactionId), ("projectId", pointer.ProjectId)))
             await update.ExecuteNonQueryAsync(ct);
         await PostgresDelayStore.RefreshAsync(connection, transaction, flow, transactionId, projection, ct);
+        await FlowVersions.UpsertStepStatsAsync(connection, transaction, pointer.ProjectId, transactionId, flow, projection, ct);
         await transaction.CommitAsync(ct);
         return receivedAt;
     }
 
-    internal static async Task<FlowDefinition?> LoadFlowAsync(NpgsqlConnection connection, NpgsqlTransaction transaction,
-        Guid projectId, string? code, Guid? flowId, CancellationToken ct)
-    {
-        await using var find = Sql.Command(connection, transaction, """
-            SELECT id, code, name FROM flows WHERE project_id = @projectId
-            AND (code = @code OR id = CAST(@flowId AS uuid))
-            """, ("projectId", projectId), ("code", code), ("flowId", flowId));
-        Guid id;
-        string name;
-        string foundCode;
-        await using (var reader = await find.ExecuteReaderAsync(ct))
-        {
-            if (!await reader.ReadAsync(ct)) return null;
-            id = reader.GetGuid(0); foundCode = reader.GetString(1); name = reader.GetString(2);
-        }
-        await using var stepsCommand = Sql.Command(connection, transaction, """
-            SELECT code, name, position, max_delay_seconds FROM flow_steps WHERE flow_id = @id ORDER BY position
-            """, ("id", id));
-        var steps = new List<FlowStep>();
-        await using (var reader = await stepsCommand.ExecuteReaderAsync(ct))
-        {
-            while (await reader.ReadAsync(ct))
-                steps.Add(new FlowStep(reader.GetString(0), reader.GetString(1), reader.GetInt16(2),
-                    reader.IsDBNull(3) ? null : reader.GetInt32(3)));
-        }
-        return new FlowDefinition(id, projectId, foundCode, name, steps);
-    }
+    /// <summary>Loads a flow with one version: the given one, or the version effective now.</summary>
+    internal static Task<FlowDefinition?> LoadFlowAsync(NpgsqlConnection connection, NpgsqlTransaction? transaction,
+        Guid projectId, string? code, Guid? flowId, CancellationToken ct, Guid? versionId = null) =>
+        FlowVersions.LoadAsync(connection, transaction, projectId, code, flowId, versionId, ct);
 
     internal static async Task<List<ObservedEvent>> LoadEventsAsync(NpgsqlConnection connection, NpgsqlTransaction transaction,
         Guid projectId, Guid transactionId, CancellationToken ct)

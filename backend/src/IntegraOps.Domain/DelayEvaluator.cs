@@ -5,7 +5,7 @@ public sealed record DelayAssessment(
 
 public static class DelayEvaluator
 {
-    public static DelayAssessment Evaluate(Projection projection, DateTimeOffset now)
+    public static DelayAssessment Evaluate(Projection projection, DateTimeOffset now, FlowDefinition? flow = null)
     {
         var none = new DelayAssessment("none", null, null, null);
         // An explicit failure already has its own status. A delay means an expected
@@ -24,7 +24,8 @@ public static class DelayEvaluator
             return none;
 
         // The expected step owns the allowance; business event time starts the clock.
-        var deadlineAt = startedAt.AddSeconds(seconds);
+        // With a calendar only working time counts, so the deadline may land on a later day.
+        var deadlineAt = flow?.DeadlineFrom(startedAt, seconds) ?? startedAt.AddSeconds(seconds);
         return new DelayAssessment(now >= deadlineAt ? "overdue" : "waiting",
             next.Code, startedAt, deadlineAt);
     }

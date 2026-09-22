@@ -51,11 +51,11 @@ export function validateFlow(value: unknown):
     if (index > 0) {
       const amount = text(step.delayValue);
       const multiplier = step.delayUnit === "seconds" ? 1
-        : step.delayUnit === "minutes" ? 60 : step.delayUnit === "hours" ? 3600 : 0;
+        : step.delayUnit === "minutes" ? 60 : step.delayUnit === "hours" ? 3600 : step.delayUnit === "days" ? 86400 : 0;
       const seconds = Number(amount) * multiplier;
       if (!/^\d+$/.test(amount) || !multiplier || !Number.isSafeInteger(seconds)
-        || seconds < 1 || seconds > 86400) {
-        errors[`step-${index}-delay`] = "Süreyi tam sayı olarak girin. İzin verilen aralık: 1 saniye–24 saat.";
+        || seconds < 1 || seconds > 2592000) {
+        errors[`step-${index}-delay`] = "Süreyi tam sayı olarak girin. İzin verilen aralık: 1 saniye–30 gün.";
       } else maxDelaySeconds = seconds;
     }
     return { code, name, maxDelaySeconds };

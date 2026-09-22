@@ -7,7 +7,7 @@ import type { ActionState } from "@/lib/pilot-types";
 export async function adminAction(_previous: ActionState, data: FormData): Promise<ActionState> {
   const field = (name: string) => String(data.get(name) ?? "");
   const op = field("op"); const id = field("id");
-  const withId = ["member-remove", "key-revoke", "channel-toggle", "ack", "retry", "assign", "note", "view-delete"].includes(op);
+  const withId = ["member-remove", "key-revoke", "channel-toggle", "ack", "retry", "assign", "note", "view-delete", "calendar-delete", "calendar-update"].includes(op);
   if (withId && !/^[0-9a-f-]{36}$/i.test(id)) return { message: "Kayıt kimliği geçersiz." };
   const days = (name: string) => { const v = field(name).trim(); return v === "" ? null : /^\d{1,4}$/.test(v) ? Number(v) : NaN; };
   let result: { key?: string; secret?: string; invited?: boolean } | undefined;
@@ -32,6 +32,16 @@ export async function adminAction(_previous: ActionState, data: FormData): Promi
       case "note": await api(`/alarms/${id}/notes`, "POST", { body: field("body") }); message = "Not eklendi."; break;
       case "view-save": await api("/views", "POST", { kind: field("kind"), name: field("name"), query: field("query") }); message = "Görünüm kaydedildi."; break;
       case "view-delete": await api(`/views/${id}`, "DELETE"); message = "Görünüm silindi."; break;
+      case "calendar-create": case "calendar-update": {
+        const holidays = field("holidays").split(/\r?\n/).map(l => l.trim()).filter(Boolean).map(l => {
+          const [day, ...rest] = l.split(/\s+/); return { day, name: rest.join(" ") };
+        });
+        const body = { name: field("name"), timeZone: field("timezone"), workDays: data.getAll("workDays").map(Number),
+          startTime: field("startTime"), endTime: field("endTime"), holidays };
+        if (op === "calendar-create") await api("/calendars", "POST", body); else await api(`/calendars/${id}`, "PUT", body);
+        message = "Takvim kaydedildi."; break;
+      }
+      case "calendar-delete": await api(`/calendars/${id}`, "DELETE"); message = "Takvim silindi."; break;
       case "retention": {
         const values = { finishedTransactionDays: days("transactions"), notificationDays: days("notifications"), auditDays: days("audit") };
         if (Object.values(values).some(Number.isNaN)) return { message: "Gün değerleri tam sayı olmalı." };

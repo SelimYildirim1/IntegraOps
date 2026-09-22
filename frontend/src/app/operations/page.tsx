@@ -15,6 +15,9 @@ const actionNames: Record<string, string> = {
   "member.invite": "Kullanıcı davet edildi", "alarm.assign": "Alarm sorumlusu atandı", "alarm.unassign": "Alarm sorumlusu kaldırıldı",
   "alarm.note": "Alarma not eklendi", "retention.update": "Saklama kuralları güncellendi",
   "export.transactions": "İşlem listesi dışa aktarıldı", "export.alarms": "Alarm listesi dışa aktarıldı",
+  "flow.draft": "Akış taslağı oluşturuldu", "flow.draft.update": "Akış taslağı düzenlendi", "flow.draft.delete": "Akış taslağı silindi",
+  "flow.publish": "Akış sürümü yayınlandı", "flow.rename": "Akış adı değiştirildi",
+  "calendar.create": "Takvim oluşturuldu", "calendar.update": "Takvim güncellendi", "calendar.delete": "Takvim silindi",
 };
 
 export default async function OperationsPage() {

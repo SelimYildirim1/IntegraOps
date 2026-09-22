@@ -1,10 +1,10 @@
 import "server-only";
 import { cookies } from "next/headers";
 import { redirect, unstable_rethrow } from "next/navigation";
-import type { FlowDetails, TestEventPayload } from "./flow-details";
+import type { FlowDetails, FlowDiffResult, FlowVersionDetails, TestEventPayload } from "./flow-details";
 import type { CreateFlowInput } from "./flow-form";
 import type { Filters, Flow, Summary, TransactionDetail, TransactionPage } from "./types";
-import type { Project, Access, Assignee, SavedView } from "./pilot-types";
+import type { Project, Access, Assignee, Calendar, SavedView } from "./pilot-types";
 
 export class ApiError extends Error {
   constructor(public status: number, message: string) { super(message); }
@@ -58,6 +58,9 @@ export const getProjects = () => api<Project[]>("/me/projects", "GET", undefined
 export const getAccess = () => api<Access>("/access");
 export const getFlows = () => api<Flow[]>("/flows");
 export const getFlow = (flow: string) => api<FlowDetails>("/flows/" + encodeURIComponent(flow));
+export const getFlowVersion = (flow: string, version: number) => api<FlowVersionDetails>(`/flows/${encodeURIComponent(flow)}/versions/${version}`);
+export const getFlowDiff = (flow: string, from: number, to: number) => api<FlowDiffResult>(`/flows/${encodeURIComponent(flow)}/versions/${from}/diff/${to}`);
+export const getCalendars = () => api<Calendar[]>("/calendars");
 export const getSummary = (flow: string, test: string) => api<Summary>(
   "/transactions/summary?" + new URLSearchParams({ flow, test }));
 export const getTransactions = (filters: Filters) => api<TransactionPage>(

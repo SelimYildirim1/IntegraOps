@@ -44,6 +44,8 @@ jobs:
           python3 scripts/verify_delays.py --session
       - name: Verify V1.1 operation features
         run: python3 scripts/verify_v1_1.py
+      - name: Verify V1.2 flow versioning
+        run: python3 scripts/verify_v1_2.py
       - name: Start monitoring stack
         run: docker compose -f docker-compose.yml -f compose.monitoring.yml up -d
       - name: Verify monitoring

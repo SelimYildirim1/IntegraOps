@@ -2,7 +2,7 @@
 
 Bu belge projenin V1 kapanışından kurumsal ürüne kadar olan geliştirme planını ve her aşamanın güncel durumunu tutar. Aşamalar sırayla uygulanır. Bir aşama ancak kendi bitiş ölçütü karşılandığında tamamlanmış sayılır.
 
-**Son güncelleme:** 22 Eylül 2026 (V1.1 tamamlandı)
+**Son güncelleme:** 22 Eylül 2026 (V1.2 tamamlandı)
 
 ## Durum işaretleri
 
@@ -16,7 +16,7 @@ Bu belge projenin V1 kapanışından kurumsal ürüne kadar olan geliştirme pla
 
 ## Şu an neredeyiz
 
-**Aktif aşama:** V1.2 akış sürümleme (Aşama 7). Aşama 2, 3 ve 5 dış girdi bekliyor; V1.1 tamamlandı.
+**Aktif aşama:** Go aktarım ajanı (Aşama 8). Aşama 2, 3 ve 5 dış girdi bekliyor; V1.1 ve V1.2 tamamlandı.
 
 Aşama 1 tamamlandı. Aşama 3 ve 4'ün yerelde sınanabilen bütün kısımları tamamlandı; kalan görevler gerçek sunucu, alan adı ve SMTP bilgisine bağlı. Bu girdiler gelene kadar Aşama 2, 3 ve 5 için kullanıcı kararı gerekiyor:
 
@@ -198,25 +198,27 @@ V1'in ardından ilk ürün geliştirme paketi kullanıcıların günlük işini 
 
 ---
 
-## 7. V1.2 — Akış sürümleme ve gelişmiş süre kuralları ⏳
+## 7. V1.2 — Akış sürümleme ve gelişmiş süre kuralları ✅
 
 Mevcut akışların sabit olması geçmiş işlemlerin anlamını koruyor. Bu yaklaşım açık bir sürüm yönetimine dönüştürülür.
 
 | Özellik | Durum |
 |---|---|
-| Akış taslağı oluşturma ve yayınlama | ⏳ |
-| Akış sürümlerinin izlenmesi | ⏳ |
-| Yeni işlemlerin yeni sürüme bağlanması | ⏳ |
-| Devam eden işlemlerin başladıkları sürümde kalması | ⏳ |
-| Sürümler arasındaki farkların görüntülenmesi | ⏳ |
-| Yeni sürümün etkinleşeceği zamanın belirlenmesi | ⏳ |
-| Mesai saatleri, tatiller ve saat dilimine göre süre hesaplama | ⏳ |
-| İş türüne veya müşteri grubuna göre farklı süre hedefleri | ⏳ |
-| Tamamlanmış işlemlerde geçmiş süre ihlallerinin raporlanması | ⏳ |
+| Akış taslağı oluşturma ve yayınlama | ✅ Tek taslak, kaydet, yayınla, sil |
+| Akış sürümlerinin izlenmesi | ✅ Sürüm tablosu: taslak, etkin, planlandı, eski; işlem sayısı |
+| Yeni işlemlerin yeni sürüme bağlanması | ✅ İlk bildirimde etkin sürüm |
+| Devam eden işlemlerin başladıkları sürümde kalması | ✅ `flow_version_id`; başka sürümün adımı 400 |
+| Sürümler arasındaki farkların görüntülenmesi | ✅ Diff endpoint ve panel sayfası |
+| Yeni sürümün etkinleşceği zamanın belirlenmesi | ✅ `effectiveFrom`, en fazla 1 yıl ileri |
+| Mesai saatleri, tatiller ve saat dilimine göre süre hesaplama | ✅ Proje takvimleri, sürüme bağlanır |
+| İş türüne veya müşteri grubuna göre farklı süre hedefleri | ✅ Bildirimdeki `group` alanı, adım başına grup süreleri |
+| Tamamlanmış işlemlerde geçmiş süre ihlallerinin raporlanması | ✅ Raporlar sekmesi, `transaction_step_stats` |
 
 **Teknoloji:** İş kuralları .NET tarafında, sürüm ve takvim verileri PostgreSQL'de, yönetim ekranları Next.js'te.
 
 **Bitiş ölçütü:** Akış değişikliği devam eden işlemlerin anlamını bozmaz. Süreler iş takvimine göre doğru hesaplanır.
+
+**Doğrulama:** `scripts/verify_v1_2.py` 34 kontrol, 67 birim testi, tarayıcı kontrolü. Ayrıntı `docs/v1-2.md`.
 
 ---
 
@@ -393,3 +395,4 @@ Yeterli geçmiş veri oluşursa Python üzerinden anomali tespiti, olası neden 
 | 22 Eylül 2026 | Aşama 3 | İmaj yayın hattı, canlı betikler ve yerel prova: 26 kontrol geçti. Gerçek sunucu bekleniyor |
 | 22 Eylül 2026 | Aşama 2 | Entegrasyon sözleşmesi yazıldı. Kaynak sistem seçimi bekleniyor |
 | 22 Eylül 2026 | V1.1 | Günlük kullanım özellikleri: migration 004, 48 kontrol geçti. **V1.1 tamamlandı** |
+| 22 Eylül 2026 | V1.2 | Akış sürümleme, takvim, grup süreleri, ihlal raporu: migration 005, 34 kontrol geçti. **V1.2 tamamlandı** |

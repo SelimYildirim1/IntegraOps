@@ -1,0 +1,24 @@
+namespace IntegraOps.Domain;
+
+/// <summary>Realised duration of a completed step, measured from the previous completed step.</summary>
+public sealed record StepStat(string Code, DateTimeOffset StartedAt, DateTimeOffset CompletedAt,
+    long ElapsedSeconds, int AllowanceSeconds, bool Breached);
+
+public static class StepStats
+{
+    public static IReadOnlyList<StepStat> Compute(FlowDefinition flow, Projection projection)
+    {
+        var steps = projection.Steps.OrderBy(s => s.Position).ToArray();
+        var result = new List<StepStat>();
+        for (var i = 1; i < steps.Length; i++)
+        {
+            var step = steps[i]; var previous = steps[i - 1];
+            if (step.Observation != "completed" || previous.Observation != "completed"
+                || step.OccurredAt is not { } done || previous.OccurredAt is not { } started || step.MaxDelaySeconds is not { } allowance)
+                continue;
+            var elapsed = flow.ElapsedSeconds(started, done);
+            result.Add(new StepStat(step.Code, started, done, elapsed, allowance, elapsed > allowance));
+        }
+        return result;
+    }
+}
