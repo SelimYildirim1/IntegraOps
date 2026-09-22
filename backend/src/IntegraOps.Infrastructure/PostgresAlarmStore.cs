@@ -10,10 +10,10 @@ public static class PostgresAlarmStore
     // The caller already holds the transaction row lock. Events and delivery jobs
     // commit atomically with the updated projection; repeated scans cannot re-open an active alarm.
     internal static async Task Sync(NpgsqlConnection c, NpgsqlTransaction tx, FlowDefinition flow,
-        Guid transaction, Projection projection, DelayAssessment delay, CancellationToken ct)
+        Guid transaction, Projection projection, DelayAssessment delay, DateTimeOffset now, CancellationToken ct)
     {
         if (delay.State == "pending_processing") return;
-        var desired = AlarmRules.Current(projection, delay);
+        var desired = AlarmRules.Current(projection, delay, now);
         var active = await Rows(c, tx, "SELECT id,kind,step_code FROM alarms WHERE project_id=@p AND transaction_id=@t AND resolved_at IS NULL",
             ct, ("p", flow.ProjectId), ("t", transaction));
         foreach (var old in active)

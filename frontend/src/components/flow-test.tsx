@@ -7,7 +7,8 @@ import type { FlowDetails, TestEventPayload } from "@/lib/flow-details";
 
 // Akış tanımını gerçek bildirimlerle dener. TEST- kimlikli işlemler oluşturur.
 export default function FlowTest({ flow }: { flow: FlowDetails }) {
-  const steps = [...flow.steps].sort((a, b) => a.position - b.position);
+  // Optional steps are never expected, so the trial reports only the steps that complete the flow.
+  const steps = [...flow.steps].sort((a, b) => a.position - b.position).filter(s => s.kind !== "optional" && s.kind !== "conditional");
   const [run, setRun] = useState<{ id: string; accepted: number } | null>(null);
   const [attempt, setAttempt] = useState<TestEventPayload | null>(null);
   const [lastPayload, setLastPayload] = useState<TestEventPayload | null>(null);

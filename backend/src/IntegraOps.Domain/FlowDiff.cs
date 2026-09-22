@@ -18,6 +18,9 @@ public static class FlowDiff
                 continue;
             }
             if (old.Position != step.Position) changes.Add(new StepChange("moved", step.Code, $"{old.Position + 1}. → {step.Position + 1}."));
+            if (old.EffectiveStage != step.EffectiveStage) changes.Add(new StepChange("stage", step.Code, $"{old.EffectiveStage + 1}. aşama → {step.EffectiveStage + 1}. aşama"));
+            if (old.Kind != step.Kind) changes.Add(new StepChange("kind", step.Code, $"{old.Kind} → {step.Kind}"));
+            if (!(old.Groups ?? []).SequenceEqual(step.Groups ?? [])) changes.Add(new StepChange("groups", step.Code, $"{string.Join(",", old.Groups ?? [])} → {string.Join(",", step.Groups ?? [])}"));
             if (old.Name != step.Name) changes.Add(new StepChange("renamed", step.Code, $"{old.Name} → {step.Name}"));
             if (old.MaxDelaySeconds != step.MaxDelaySeconds)
                 changes.Add(new StepChange("allowance", step.Code, $"{Allowance(old.MaxDelaySeconds)} → {Allowance(step.MaxDelaySeconds)}"));

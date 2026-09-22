@@ -6,9 +6,9 @@ import { draftAction, type DraftState } from "@/app/flows/versions-actions";
 import { delayDraft, type FlowVersionDetails } from "@/lib/flow-details";
 import type { Calendar } from "@/lib/pilot-types";
 
-type StepDraft = { id: number; code: string; name: string; delayValue: string; delayUnit: string; overrides: string };
+type StepDraft = { id: number; code: string; name: string; delayValue: string; delayUnit: string; overrides: string; parallel: boolean; kind: string; groups: string };
 const units: Record<string, number> = { seconds: 1, minutes: 60, hours: 3600, days: 86400 };
-const blank = (id: number): StepDraft => ({ id, code: "", name: "", delayValue: "", delayUnit: "minutes", overrides: "" });
+const blank = (id: number): StepDraft => ({ id, code: "", name: "", delayValue: "", delayUnit: "minutes", overrides: "", parallel: false, kind: "required", groups: "" });
 
 // "vip=30m, standard=2h" biçimindeki grup sürelerini saniyeye çevirir.
 export function parseOverrides(text: string): { ok: true; value: Record<string, number> } | { ok: false; error: string } {
@@ -36,8 +36,11 @@ export default function VersionEditor({ draft, calendars }: { draft: FlowVersion
   const [note, setNote] = useState(draft.note);
   const [calendarId, setCalendarId] = useState(draft.calendarId ?? "");
   const [effectiveFrom, setEffectiveFrom] = useState("");
-  const [steps, setSteps] = useState<StepDraft[]>(() => [...draft.steps].sort((a, b) => a.position - b.position)
-    .map((s, i) => ({ id: i, code: s.code, name: s.name, ...delayDraft(s.maxDelaySeconds), overrides: overridesText(s.overrides) })));
+  const [steps, setSteps] = useState<StepDraft[]>(() => {
+    const sorted = [...draft.steps].sort((a, b) => a.position - b.position);
+    return sorted.map((s, i) => ({ id: i, code: s.code, name: s.name, ...delayDraft(s.maxDelaySeconds), overrides: overridesText(s.overrides),
+      parallel: i > 0 && (s.stage ?? i) === (sorted[i - 1].stage ?? i - 1), kind: s.kind ?? "required", groups: (s.groups ?? []).join(", ") }));
+  });
   const [error, setError] = useState("");
   const nextId = useRef(draft.steps.length);
   const update = (id: number, change: Partial<StepDraft>) => setSteps(cur => cur.map(s => s.id === id ? { ...s, ...change } : s));
@@ -49,13 +52,18 @@ export default function VersionEditor({ draft, calendars }: { draft: FlowVersion
 
   function payload(): string | null {
     const out = [];
+    let stage = 0;
     for (let i = 0; i < steps.length; i++) {
       const s = steps[i];
       const parsed = parseOverrides(s.overrides);
       if (!parsed.ok) { setError(parsed.error); return null; }
-      const seconds = i === 0 ? null : Number(s.delayValue) * (units[s.delayUnit] ?? 0);
-      if (i > 0 && (!/^\d+$/.test(s.delayValue) || seconds! < 1 || seconds! > 2592000)) { setError(`${i + 1}. adımın süresi 1 saniye–30 gün arasında olmalı.`); return null; }
-      out.push({ code: s.code.trim(), name: s.name.trim(), maxDelaySeconds: seconds, overrides: parsed.value });
+      if (i > 0) stage = s.parallel ? stage : stage + 1;
+      const optional = s.kind === "optional";
+      const seconds = i === 0 || (optional && s.delayValue.trim() === "") ? null : Number(s.delayValue) * (units[s.delayUnit] ?? 0);
+      if (i > 0 && seconds !== null && (!/^\d+$/.test(s.delayValue) || seconds < 1 || seconds > 2592000)) { setError(`${i + 1}. adımın süresi 1 saniye–30 gün arasında olmalı.`); return null; }
+      const groups = s.groups.split(",").map(g => g.trim()).filter(Boolean);
+      if (s.kind === "conditional" && groups.length === 0) { setError(`${i + 1}. koşullu adım için en az bir grup yazın.`); return null; }
+      out.push({ code: s.code.trim(), name: s.name.trim(), maxDelaySeconds: seconds, overrides: parsed.value, stage, kind: s.kind, groups: s.kind === "conditional" ? groups : [] });
     }
     setError("");
     return JSON.stringify({ name: name.trim(), note: note.trim(), calendarId, steps: out });
@@ -81,7 +89,7 @@ export default function VersionEditor({ draft, calendars }: { draft: FlowVersion
       </div>
       <div className="surface-body" style={{ borderTop: "1px solid var(--line-2)" }}>
         <div className="step-card-head" style={{ marginBottom: 4 }}><p className="legend" style={{ margin: 0 }}>Adımlar</p><span className="count">{steps.length} / 30 adım</span></div>
-        <p className="help">Adım kodları kaynak sistemlerin gönderdiği kodlardır. Grup süreleri, işlemi <code>group</code> alanıyla gönderen kaynaklar için farklı süre tanır; örnek: <code>vip=30dk, kurumsal=2sa</code>.</p>
+        <p className="help">Adım kodları kaynak sistemlerin gönderdiği kodlardır. "Önceki adımla paralel" işaretlenen adım aynı aşamada ilerler; sonraki aşama hepsini bekler. İsteğe bağlı adım beklenmez ve ölçülmez; koşullu adım yalnızca yazılan gruplardaki işlemler için beklenir. Grup süreleri, işlemi <code>group</code> alanıyla gönderen kaynaklar için farklı süre tanır; örnek: <code>vip=30dk, kurumsal=2sa</code>.</p>
         <ol className="step-list">{steps.map((s, i) => <li key={s.id} className="step-card">
           <div className="step-card-head"><h3><span className="idx">{i + 1}</span>{i === 0 ? "Başlangıç adımı" : `${i + 1}. adım`}</h3>
             <div className="cell-actions">
@@ -94,7 +102,14 @@ export default function VersionEditor({ draft, calendars }: { draft: FlowVersion
             <div className="field"><label htmlFor={`s-${s.id}-code`}>Adım kodu</label><input id={`s-${s.id}-code`} value={s.code} maxLength={64} autoCapitalize="none" spellCheck={false} onChange={e => update(s.id, { code: e.target.value })} /></div>
           </div>
           {i > 0 && <div className="form-grid">
-            <div className="field"><label htmlFor={`s-${s.id}-delay`}>{steps[i - 1].name || "Önceki adım"} sonrası tanınan süre</label>
+            <div className="field"><label htmlFor={`s-${s.id}-kind`}>Tür</label>
+              <select id={`s-${s.id}-kind`} value={s.kind} onChange={e => update(s.id, { kind: e.target.value })}>
+                <option value="required">Zorunlu</option><option value="optional">İsteğe bağlı</option><option value="conditional">Koşullu (gruba göre)</option></select></div>
+            <div className="field"><span className="label">Aşama</span>
+              <label className="toggle"><input type="checkbox" checked={s.parallel} onChange={e => update(s.id, { parallel: e.target.checked })} />Önceki adımla paralel</label></div>
+            {s.kind === "conditional" && <div className="field" style={{ gridColumn: "1 / -1" }}><label htmlFor={`s-${s.id}-groups`}>Beklendiği gruplar (virgülle)</label>
+              <input id={`s-${s.id}-groups`} value={s.groups} placeholder="export, kurumsal" onChange={e => update(s.id, { groups: e.target.value })} /></div>}
+            <div className="field"><label htmlFor={`s-${s.id}-delay`}>{s.parallel ? "Aşama başlangıcından" : `${steps[i - 1].name || "Önceki adım"} sonrası`} tanınan süre{s.kind === "optional" ? " (isteğe bağlı)" : ""}</label>
               <div className="inline-fields">
                 <input id={`s-${s.id}-delay`} type="number" min={1} step={1} value={s.delayValue} inputMode="numeric" onChange={e => update(s.id, { delayValue: e.target.value })} />
                 <select aria-label="Birim" value={s.delayUnit} onChange={e => update(s.id, { delayUnit: e.target.value })}>

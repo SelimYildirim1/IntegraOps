@@ -25,6 +25,7 @@ IntegraOps, farklı sistemlerden gelen iş olaylarını aynı işlem altında bi
 - Go aktarım ajanı (`agent/`): kaynak outbox ya da dizinden olayları taşır, kesintide bekletir, hız sınırlar, merkeze yaşam sinyali gönderir.
 - Python mutabakat servisi (`reconciler/`): kaynak işlemlerini IntegraOps ile karşılaştırır, hiç bildirilmemiş işlemleri ve eksik adımları bulur.
 - Raporlar: adım süreleri ve yüzdelikler, süre uyumu, alarm yanıt süreleri, tekrarlayan sorunlar, veri kalitesi, eğilim grafikleri, günlük/haftalık özet e-postası.
+- Karmaşık süreçler: paralel aşamalar, isteğe bağlı ve gruba bağlı koşullu adımlar, `skipped` ve `cancelled` bildirimleri.
 
 ## Gerekenler
 
@@ -127,6 +128,7 @@ python3 scripts/verify_v1_2.py
 python3 scripts/verify_agent.py     # Go 1.25 gerektirir; yerel API'yi kısa süre durdurur
 python3 scripts/verify_reconciler.py # reconciler/.venv (pg8000) gerektirir
 python3 scripts/verify_reports.py
+python3 scripts/verify_v2_flows.py
 ```
 
 Kesinti provası için ayrı, uygun yerel test zamanında:
@@ -159,7 +161,7 @@ Ardından `POST http://localhost:8081/orders/DEMO-MANUAL-001/invoice` adresine `
 - Aynı projede aynı `eventId` ve aynı içerik tekrar gönderilebilir; farklı içerik 409 üretir.
 - `transactionId` aynı işin adımlarında sabittir. Her yeni olay ayrı `eventId` kullanır.
 - `occurredAt` saat dilimi içermelidir; adımın durumu teslim sırasına değil olay zamanına göre seçilir.
-- `not_observed`, bildirimin görülmediğini belirtir. Dış sistemin işi yapmadığını kanıtlamaz.
+- `not_observed`, bildirimin görülmediğini belirtir. Dış sistemin işi yapmadığını kanıtlamaz. `skipped` adımın bilinçli olarak yapılmadığını, `cancelled` işlemin iptal edildiğini kaynak açıkça bildirir.
 - Gecikme `failed` anlamına gelmez; kaynak açıkça hata bildirmelidir.
 - Akışlar 2–30 sıralı adımdır. İlk adımda süre yoktur; diğerleri 1 saniye–30 gündür.
 - Yayınlanan akış sürümü değişmez. Değişiklik yeni sürüm taslağıyla yapılır ve yayınlanır; devam eden işlemler başladıkları sürümde kalır.
@@ -218,6 +220,7 @@ Gerçek kaynak sistemin bağlanması için sözleşme `docs/entegrasyon-sozlesme
 - `docs/aktarim-ajani.md`: Go aktarım ajanının kaynak sözleşmesi, yapılandırması ve doğrulaması.
 - `docs/mutabakat.md`: Python mutabakat servisinin sorgu sözleşmesi, ayarları ve doğrulaması.
 - `docs/raporlar.md`: Rapor göstergeleri, özet e-postaları ve doğrulaması.
+- `docs/v2-akislar.md`: Paralel, koşullu ve isteğe bağlı adımlar, atlama ve iptal kuralları.
 - `docs/entegrasyon-sozlesmesi.md`: Gerçek kaynak sistem için olay, kimlik ve kuyruk kuralları.
 - `docs/izleme.md` ve `docs/canli-ortam.md`: Sistem sağlığı izleme ve canlı işletim rehberleri.
 - `IntegraOps_V1_00_Kurulum_ve_Test.md`: V1 modüllerinin ayrıntılı kurulum açıklaması.

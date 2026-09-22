@@ -53,7 +53,7 @@ Content-Type: application/json
 
 | Alan | Kural |
 |---|---|
-| `status` | `completed` iş adımı gerçekleşti. `failed` iş adımı denendi ve hata verdi. |
+| `status` | `completed` iş adımı gerçekleşti. `failed` iş adımı denendi ve hata verdi. `skipped` adım bilinçli olarak yapılmadı ve tamamlanmış sayılır. `cancelled` işlem iptal edildi; süre takibi durur. |
 | `occurredAt` | İş olayının kaynakta gerçekleştiği an. Saat dilimi zorunlu. Gönderim anı değildir. Sunucu saatinden 5 dakikadan fazla ileride olamaz. |
 | `error` | Yalnızca `failed` için. En fazla 2000 karakter. Kişisel veri, parola veya yığın izi içermez. |
 

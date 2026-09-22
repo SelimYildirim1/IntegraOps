@@ -47,6 +47,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<Sea
     { label: "Gecikmiş", value: summary.overdue, status: "", delay: "overdue", tone: "warn" },
     { label: "Hata bildirilen", value: summary.failed, status: "failed", delay: "", tone: "bad" },
     { label: "Tamamlanan", value: summary.completed, status: "completed", delay: "", tone: "good" },
+    { label: "İptal edilen", value: summary.cancelled, status: "cancelled", delay: "", tone: "" },
   ];
   const activeStrip = (m: typeof strip[number]) => filters.status === m.status && filters.delay === m.delay;
   const scopeName = flowNames.get(filters.flow);

@@ -6,7 +6,7 @@ public sealed record FlowListItem(
 public sealed record TransactionSummary(
     long Total, long Pending, long InProgress,
     long Completed, long Failed, long Overdue,
-    DateTimeOffset QueriedAt);
+    DateTimeOffset QueriedAt, long Cancelled = 0);
 
 public interface IPanelQueries
 {

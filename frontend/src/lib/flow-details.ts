@@ -1,4 +1,5 @@
-export type FlowStepDetails = { code: string; name: string; position: number; maxDelaySeconds: number | null; overrides?: Record<string, number> };
+export type FlowStepDetails = { code: string; name: string; position: number; maxDelaySeconds: number | null; overrides?: Record<string, number>;
+  stage?: number; kind?: "required" | "optional" | "conditional"; groups?: string[] };
 export type FlowVersionRow = {
   id: string; version: number; state: "draft" | "published"; effective_from: string | null; published_at: string | null;
   note: string; created_at: string; calendar: string | null; created_by: string | null; step_count: number; transaction_count: number; effective: boolean;

@@ -33,7 +33,7 @@ public sealed class PostgresReportQueries(NpgsqlDataSource source, IDataProtecti
         await using var tx = await c.BeginTransactionAsync(System.Data.IsolationLevel.RepeatableRead, ct);
         var totals = (await Rows(c, tx, $"""
             SELECT count(*) transactions, count(*) FILTER (WHERE t.status='Completed') completed, count(*) FILTER (WHERE t.status='Failed') failed,
-                count(*) FILTER (WHERE t.status='InProgress') in_progress
+                count(*) FILTER (WHERE t.status='InProgress') in_progress, count(*) FILTER (WHERE t.status='Cancelled') cancelled
             FROM transactions t JOIN flows f ON f.id=t.flow_id
             WHERE t.project_id=@p AND t.created_at>=@from AND t.created_at<@to AND (CAST(@flow AS text) IS NULL OR f.code=@flow) AND {TestFilter}
             """, ct, args))[0];
@@ -199,7 +199,7 @@ public sealed class PostgresReportQueries(NpgsqlDataSource source, IDataProtecti
         {
             $"{(period == "daily" ? "Günlük" : "Haftalık")} IntegraOps özeti · {project}",
             $"Dönem: {from:yyyy-MM-dd HH:mm}Z – {to:yyyy-MM-dd HH:mm}Z", "",
-            $"İşlemler: {totals["transactions"]} yeni · {totals["completed"]} tamamlandı · {totals["failed"]} hata · {totals["in_progress"]} devam ediyor",
+            $"İşlemler: {totals["transactions"]} yeni · {totals["completed"]} tamamlandı · {totals["failed"]} hata · {totals["in_progress"]} devam ediyor · {totals["cancelled"]} iptal",
             $"Süre uyumu: {Pct(measured - breached, measured)} ({measured} ölçülen adım, {breached} aşım)",
             $"Alarmlar: {alarms["overdue"]} süre aşımı · {alarms["failed"]} hata · {alarms["still_open"]} hâlâ açık",
             $"Alarm yanıtı: görülme ort. {Dur(alarms["mtta_seconds"])} · çözüm ort. {Dur(alarms["mttr_seconds"])}",
