@@ -16,8 +16,9 @@ LABEL org.opencontainers.image.source="https://github.com/SelimYildirim1/Integra
       org.opencontainers.image.title="integraops-api"
 WORKDIR /app
 COPY --from=build /out/api .
-RUN mkdir -p /var/lib/integraops/keys && chown -R app:app /var/lib/integraops
-ENV Protection__KeyPath=/var/lib/integraops/keys
+# Exports are written by the API and served from the same volume; the directory must exist with app ownership before the volume is created.
+RUN mkdir -p /var/lib/integraops/keys /var/lib/integraops/exports && chown -R app:app /var/lib/integraops
+ENV Protection__KeyPath=/var/lib/integraops/keys Exports__Path=/var/lib/integraops/exports
 USER app
 ENV ASPNETCORE_HTTP_PORTS=8080
 EXPOSE 8080

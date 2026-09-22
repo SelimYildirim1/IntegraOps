@@ -5,7 +5,7 @@ using IntegraOps.Infrastructure;
 namespace IntegraOps.Api;
 
 public sealed record ProjectRule(string Roles = "owner,operator,viewer", bool SessionOnly = true);
-public sealed record ProjectNameInput(string Name);
+public sealed record ProjectNameInput(string Name, Guid? OrganizationId = null);
 
 public static class PilotEndpoints
 {
@@ -65,8 +65,8 @@ public static class PilotEndpoints
             await store.FirstOwner(access.ProjectId, input, ct);
             return Results.Ok(new { created = true });
         }).RequireRateLimiting("login");
-        app.MapPost("/api/v1/auth/login", async (LoginInput input, PostgresIdentityStore store, CancellationToken ct)
-            => Results.Ok(await store.Login(input, ct))).RequireRateLimiting("login");
+        app.MapPost("/api/v1/auth/login", async (HttpContext c, LoginInput input, PostgresIdentityStore store, CancellationToken ct)
+            => Results.Ok(await store.Login(input, EnterpriseEndpoints.Context(c), ct))).RequireRateLimiting("login");
 
         var me = app.MapGroup("/api/v1/me").AddEndpointFilter(async (invocation, next) =>
         {
@@ -79,7 +79,7 @@ public static class PilotEndpoints
         me.MapGet("/user", (HttpContext c) => Results.Ok(User(c)));
         me.MapGet("/projects", async (HttpContext c, PostgresIdentityStore s, CancellationToken ct) => Results.Ok(await s.Projects(User(c).Id, ct)));
         me.MapPost("/projects", async (HttpContext c, ProjectNameInput input, PostgresIdentityStore s, CancellationToken ct)
-            => Results.Json(await s.CreateProject(User(c).Id, input.Name, ct), statusCode: 201));
+            => Results.Json(await s.CreateProject(User(c).Id, input.Name, input.OrganizationId, ct), statusCode: 201));
         me.MapPost("/logout", async (HttpContext c, PostgresIdentityStore s, CancellationToken ct) =>
         { await s.Logout(Bearer(c), ct); return Results.NoContent(); });
         me.MapPost("/password", async (HttpContext c, PasswordInput input, PostgresIdentityStore s, CancellationToken ct) =>

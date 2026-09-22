@@ -50,7 +50,11 @@ services:
       Bootstrap__Key: ${BOOTSTRAP_KEY:?Required}
       Notifications__WebhookOrigins: ${WEBHOOK_ORIGINS:-}
       Panel__BaseUrl: https://${PANEL_HOST}
-    volumes: ["protection_keys:/var/lib/integraops/keys"]
+      Api__PublicUrl: https://${API_HOST}
+      SystemAdmin__Emails: ${SYSTEM_ADMIN_EMAILS:-}
+      Signup__Enabled: ${SIGNUP_ENABLED:-false}
+      Exports__Path: /var/lib/integraops/exports
+    volumes: ["protection_keys:/var/lib/integraops/keys", "exports_data:/var/lib/integraops/exports"]
     depends_on: { migrate: { condition: service_completed_successfully } }
   worker:
     image: ${IMAGE_REGISTRY:?Required}/worker:${IMAGE_TAG:?Required}
@@ -143,6 +147,7 @@ volumes:
   postgres_data:
   rabbitmq_data:
   protection_keys:
+  exports_data:
   caddy_data:
   caddy_config:
   prometheus_data:

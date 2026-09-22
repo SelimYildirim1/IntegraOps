@@ -44,6 +44,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
           <Link className="project-chip" href="/projects" prefetch={false} title="Projeyi değiştir">
             <span>{projectName || "Proje seçin"}</span>
           </Link>
+          <Link className="plain" href="/organization" prefetch={false}>Organizasyon</Link>
           <Link className="plain" href="/account" prefetch={false}>Hesabım</Link>
           <form action={logoutAction}><button className="text-button" type="submit">Çıkış</button></form>
         </div>}

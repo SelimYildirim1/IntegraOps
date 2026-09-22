@@ -35,6 +35,8 @@ builder.Services.AddSingleton<PostgresOperationsQueries>();
 builder.Services.AddSingleton<IPanelQueries, PostgresPanelQueries>();
 builder.Services.AddSingleton<IFlowQueries, PostgresFlowQueries>();
 builder.Services.AddSingleton<HealthMetricsCollector>();
+builder.Services.AddSingleton<DataExporter>();
+builder.Services.AddHostedService<ExportRunner>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<HealthMetricsCollector>());
 builder.Services.AddIntegraOpsTelemetry(builder.Configuration, "api",
     metrics: m => m.AddAspNetCoreInstrumentation(),
@@ -115,6 +117,9 @@ app.MapPost("/api/v1/bootstrap/projects", async (HttpContext context, CreateProj
 
 var projectApi = app.MapGroup("/api/v1").AddEndpointFilter(PilotEndpoints.ProjectFilter);
 PilotEndpoints.Map(app, projectApi, BootstrapValid);
+EnterpriseEndpoints.Map(app, projectApi, app.Configuration);
+await app.Services.GetRequiredService<PostgresOrganizationStore>()
+    .SyncSystemAdmins((app.Configuration["SystemAdmin:Emails"] ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries), CancellationToken.None);
 
 projectApi.MapPost("/flows", async (HttpContext context, CreateFlowRequest request,
     ITrackingStore store, CancellationToken ct) =>
@@ -124,10 +129,12 @@ projectApi.MapPost("/flows", async (HttpContext context, CreateFlowRequest reque
 });
 
 projectApi.MapPost("/events", async (HttpContext context, SubmitEventRequest request,
-    ITrackingStore store, TimeProvider timeProvider, PostgresConnectionStore connections, CancellationToken ct) =>
+    ITrackingStore store, TimeProvider timeProvider, PostgresConnectionStore connections, PostgresOrganizationStore organizations, CancellationToken ct) =>
 {
     var access = (ProjectAccess)context.Items[typeof(ProjectAccess)]!;
     var actor = (ProjectIdentity)context.Items[typeof(ProjectIdentity)]!;
+    // Plan enforcement: suspended or expired accounts and the daily event limit reject before any processing.
+    await organizations.CountEvent(actor.OrganizationId, ct);
     EventReceipt receipt; ValidatedEvent validated;
     try
     {
@@ -138,6 +145,7 @@ projectApi.MapPost("/events", async (HttpContext context, SubmitEventRequest req
     {
         // Rejections are part of the connection's history so integration mistakes are visible in the panel.
         await connections.RecordUsage(actor, context.Request.Headers.UserAgent, false, ex is RequestValidationException v ? string.Join("; ", v.Errors.Select(e => e.Key + ": " + e.Value[0])) : ex.Message, ct);
+        await organizations.CountRejected(actor.OrganizationId, ct);
         throw;
     }
     await connections.RecordUsage(actor, context.Request.Headers.UserAgent, true, null, ct);

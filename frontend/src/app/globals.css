@@ -412,3 +412,12 @@ td.late { color: var(--bad); }
 .rail .dot.skipped { background: var(--mute-tint); border-color: var(--ink-3); color: var(--ink-2); }
 .rail .dot.muted { border-color: var(--line); color: var(--ink-3); }
 .rail li.parallel .step { border-left: 3px solid var(--info-tint); padding-left: 12px; }
+
+/* Stage 13: onboarding checklist and usage bars */
+.checklist { list-style: none; padding: 0; display: grid; gap: 8px; }
+.checklist li { display: flex; align-items: center; gap: 10px; }
+.checklist .check { width: 20px; height: 20px; border-radius: 50%; border: 1.5px solid var(--line); display: inline-flex; align-items: center; justify-content: center; font-size: 12px; color: #fff; flex: none; }
+.checklist li.done .check { background: var(--good); border-color: var(--good); }
+.checklist li.done span:last-child { color: var(--ink-2); text-decoration: line-through; }
+.usage-bars { display: flex; align-items: flex-end; gap: 3px; height: 64px; }
+.usage-bars span { flex: 1; min-width: 4px; background: var(--signal); border-radius: 2px 2px 0 0; opacity: 0.85; }
