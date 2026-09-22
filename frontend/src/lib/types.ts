@@ -16,7 +16,7 @@ export type Summary = {
 };
 export type TransactionItem = {
   id: string; flow: string; transactionId: string; status: TransactionStatus;
-  createdAt: string; updatedAt: string; delay: DelayInfo;
+  createdAt: string; updatedAt: string; delay: DelayInfo; isTest: boolean;
 };
 export type TransactionPage = {
   page: number; pageSize: number; totalCount: number; totalPages: number;
@@ -36,4 +36,11 @@ export type TransactionDetail = {
   acceptedEventCount: number; processedEventCount: number;
   steps: TimelineStep[]; events: ObservedEvent[]; delay: DelayInfo | null;
 };
-export type Filters = { flow: string; status: string; delay: string; page: number; pageSize: number };
+export type Filters = {
+  flow: string; status: string; delay: string; page: number; pageSize: number;
+  search: string; from: string; to: string; test: string;
+};
+export type TestFilter = "exclude" | "include" | "only";
+export const testLabels: Record<TestFilter, string> = {
+  exclude: "Test verisi hariç", include: "Test verisi dahil", only: "Yalnızca test verisi",
+};

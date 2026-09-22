@@ -9,33 +9,82 @@ public sealed class PostgresPilotQueries(NpgsqlDataSource source, IDataProtectio
 {
     private readonly IDataProtector protector = protection.CreateProtector("notification-channels.v1");
 
-    public async Task<object> Alarms(Guid project, string? state, string? flow, int page, CancellationToken ct)
+    public sealed record AlarmFilter(string State, string Flow, string? Search, DateTimeOffset? From, DateTimeOffset? To,
+        string Test, Guid? AssignedTo, bool UnassignedOnly);
+
+    public static AlarmFilter ParseAlarmFilter(string? state, string? flow, string? search, string? from, string? to,
+        string? test, string? assigned, Guid? me)
     {
         state ??= "open";
-        if (state is not ("open" or "resolved" or "all") || page is < 1 or > 100000)
-            throw new PilotHttpException(400, "Alarm filtresi geçersiz.");
+        var errors = new Dictionary<string, string[]>();
+        if (state is not ("open" or "resolved" or "all")) errors["state"] = ["open, resolved veya all kullanın."];
+        flow = string.IsNullOrWhiteSpace(flow) ? "" : flow.Trim();
+        search = string.IsNullOrWhiteSpace(search) ? null : search.Trim();
+        if (search is { Length: > 128 }) errors["search"] = ["Arama metni en fazla 128 karakter olabilir."];
+        var fromAt = IntegraOps.Application.InputValidation.DateFilter(errors, "from", from);
+        var toAt = IntegraOps.Application.InputValidation.DateFilter(errors, "to", to);
+        test = string.IsNullOrWhiteSpace(test) ? "exclude" : test.Trim().ToLowerInvariant();
+        if (test is not ("exclude" or "include" or "only")) errors["test"] = ["exclude, include veya only kullanın."];
+        Guid? assignedTo = null; var unassigned = false;
+        assigned = string.IsNullOrWhiteSpace(assigned) ? "" : assigned.Trim();
+        if (assigned == "me") assignedTo = me ?? throw new PilotHttpException(400, "assigned=me için oturum gerekli.");
+        else if (assigned == "none") unassigned = true;
+        else if (assigned.Length > 0 && !Guid.TryParse(assigned, out var parsed)) errors["assigned"] = ["me, none veya kullanıcı kimliği kullanın."];
+        else if (assigned.Length > 0) assignedTo = Guid.Parse(assigned);
+        if (errors.Count > 0) throw new IntegraOps.Application.RequestValidationException(errors);
+        return new AlarmFilter(state, flow, search, fromAt, toAt, test, assignedTo, unassigned);
+    }
+
+    private const string AlarmWhere = """
+        FROM alarms a JOIN transactions t ON t.id=a.transaction_id JOIN flows f ON f.id=t.flow_id
+        LEFT JOIN app_users asg ON asg.id=a.assigned_to
+        WHERE a.project_id=@p AND (@s='all' OR (@s='open' AND a.resolved_at IS NULL) OR (@s='resolved' AND a.resolved_at IS NOT NULL))
+            AND (@f='' OR f.code=@f)
+            AND (CAST(@search AS text) IS NULL OR t.business_id ILIKE '%' || @search || '%')
+            AND (CAST(@from AS timestamptz) IS NULL OR a.opened_at >= @from)
+            AND (CAST(@to AS timestamptz) IS NULL OR a.opened_at < @to)
+            AND (@test = 'include' OR (@test = 'only' AND t.is_test) OR (@test = 'exclude' AND NOT t.is_test))
+            AND (CAST(@assigned AS uuid) IS NULL OR a.assigned_to = @assigned)
+            AND (NOT @unassigned OR a.assigned_to IS NULL)
+        """;
+    private const string AlarmSelect = "SELECT a.*,f.code flow,t.business_id,t.is_test,asg.name assigned_name ";
+
+    private static (string, object?)[] AlarmArgs(Guid project, AlarmFilter f) =>
+        [("p", project), ("s", f.State), ("f", f.Flow), ("search", f.Search is null ? null : PostgresTransactionQueries.EscapeLike(f.Search)),
+         ("from", f.From), ("to", f.To), ("test", f.Test), ("assigned", f.AssignedTo), ("unassigned", f.UnassignedOnly)];
+
+    public async Task<object> Alarms(Guid project, AlarmFilter filter, int page, CancellationToken ct)
+    {
+        if (page is < 1 or > 100000) throw new PilotHttpException(400, "Sayfa geçersiz.");
         await using var c = await source.OpenConnectionAsync(ct);
         await using var tx = await c.BeginTransactionAsync(System.Data.IsolationLevel.RepeatableRead, ct);
-        const string where = """
-            FROM alarms a JOIN transactions t ON t.id=a.transaction_id JOIN flows f ON f.id=t.flow_id
-            WHERE a.project_id=@p AND (@s='all' OR (@s='open' AND a.resolved_at IS NULL) OR (@s='resolved' AND a.resolved_at IS NOT NULL))
-                AND (@f='' OR f.code=@f)
-            """;
-        (string, object?)[] args = [("p", project), ("s", state), ("f", flow ?? ""), ("skip", (page - 1) * 25)];
-        var total = await Value(c, tx, "SELECT count(*) " + where, ct, args);
-        var items = await Rows(c, tx, "SELECT a.*,f.code flow,t.business_id " + where + " ORDER BY a.opened_at DESC,a.id DESC LIMIT 25 OFFSET @skip", ct, args);
+        var args = AlarmArgs(project, filter).Append(("skip", (object?)((page - 1) * 25))).ToArray();
+        var total = await Value(c, tx, "SELECT count(*) " + AlarmWhere, ct, args);
+        var items = await Rows(c, tx, AlarmSelect + AlarmWhere + " ORDER BY a.opened_at DESC,a.id DESC LIMIT 25 OFFSET @skip", ct, args);
         await tx.CommitAsync(ct);
         return new { items, total, page, pageSize = 25 };
+    }
+
+    /// <summary>Streams alarm rows for CSV export; bounded so one request cannot dump an unbounded table.</summary>
+    public async Task<List<Dictionary<string, object?>>> AlarmsForExport(Guid project, AlarmFilter filter, int limit, CancellationToken ct)
+    {
+        await using var c = await source.OpenConnectionAsync(ct);
+        return await Rows(c, null, AlarmSelect + AlarmWhere + " ORDER BY a.opened_at DESC,a.id DESC LIMIT @limit", ct,
+            AlarmArgs(project, filter).Append(("limit", (object?)limit)).ToArray());
     }
 
     public async Task<object> Alarm(Guid project, Guid id, CancellationToken ct)
     {
         await using var c = await source.OpenConnectionAsync(ct);
         var alarms = await Rows(c, null, """
-            SELECT a.*,f.code flow,t.business_id FROM alarms a JOIN transactions t ON t.id=a.transaction_id
-            JOIN flows f ON f.id=t.flow_id WHERE a.project_id=@p AND a.id=@id
+            SELECT a.*,f.code flow,t.business_id,t.is_test,asg.name assigned_name FROM alarms a JOIN transactions t ON t.id=a.transaction_id
+            JOIN flows f ON f.id=t.flow_id LEFT JOIN app_users asg ON asg.id=a.assigned_to WHERE a.project_id=@p AND a.id=@id
             """, ct, ("p", project), ("id", id));
         if (alarms.Count == 0) throw new PilotHttpException(404, "Alarm bu projede bulunamadı.");
+        var notes = await Rows(c, null, """
+            SELECT n.id,n.body,n.created_at,u.name author FROM alarm_notes n JOIN app_users u ON u.id=n.author_id
+            WHERE n.alarm_id=@id ORDER BY n.created_at,n.id
+            """, ct, ("id", id));
         var events = await Rows(c, null, """
             SELECT e.id,e.kind,e.created_at,u.name actor FROM alarm_events e LEFT JOIN app_users u ON u.id=e.actor_id
             WHERE e.alarm_id=@id ORDER BY e.created_at,e.id
@@ -45,7 +94,42 @@ public sealed class PostgresPilotQueries(NpgsqlDataSource source, IDataProtectio
             FROM notification_deliveries d JOIN alarm_events e ON e.id=d.event_id
             JOIN notification_channels c ON c.id=d.channel_id WHERE e.alarm_id=@id ORDER BY d.created_at,d.id
             """, ct, ("id", id));
-        return new { alarm = alarms[0], events, deliveries };
+        return new { alarm = alarms[0], events, deliveries, notes };
+    }
+
+    public async Task Assign(ProjectIdentity actor, Guid id, Guid? assignee, CancellationToken ct)
+    {
+        await using var c = await source.OpenConnectionAsync(ct);
+        await using var tx = await c.BeginTransactionAsync(ct);
+        var current = await Value(c, tx, "SELECT assigned_to FROM alarms WHERE id=@id AND project_id=@p FOR UPDATE", ct,
+            ("p", actor.ProjectId), ("id", id));
+        if (await Value(c, tx, "SELECT 1 FROM alarms WHERE id=@id AND project_id=@p", ct, ("p", actor.ProjectId), ("id", id)) is null)
+            throw new PilotHttpException(404, "Alarm bulunamadı.");
+        if (assignee is { } target && await Value(c, tx, "SELECT 1 FROM project_members WHERE project_id=@p AND user_id=@u AND role IN ('owner','operator')", ct,
+            ("p", actor.ProjectId), ("u", target)) is null)
+            throw new PilotHttpException(400, "Sorumlu bu projede sahip ya da operatör olmalı.");
+        if ((current as Guid?) == assignee) { await tx.CommitAsync(ct); return; }
+        await Run(c, tx, "UPDATE alarms SET assigned_to=CAST(@a AS uuid),assigned_at=CASE WHEN @a IS NULL THEN NULL ELSE clock_timestamp() END WHERE id=@id", ct,
+            ("a", assignee), ("id", id));
+        await PostgresAlarmStore.Record(c, tx, id, assignee is null ? "unassigned" : "assigned", actor.UserId, ct);
+        await Audit(c, tx, actor.ProjectId, actor.UserId, assignee is null ? "alarm.unassign" : "alarm.assign", id.ToString(), ct);
+        await tx.CommitAsync(ct);
+    }
+
+    public async Task<object> AddNote(ProjectIdentity actor, Guid id, string? body, CancellationToken ct)
+    {
+        body = Text(body, 2000, "Not");
+        await using var c = await source.OpenConnectionAsync(ct);
+        await using var tx = await c.BeginTransactionAsync(ct);
+        if (await Value(c, tx, "SELECT 1 FROM alarms WHERE id=@id AND project_id=@p", ct, ("p", actor.ProjectId), ("id", id)) is null)
+            throw new PilotHttpException(404, "Alarm bulunamadı.");
+        var noteId = Guid.CreateVersion7();
+        await Run(c, tx, "INSERT INTO alarm_notes(id,alarm_id,author_id,body) VALUES(@n,@a,@u,@b)", ct,
+            ("n", noteId), ("a", id), ("u", actor.UserId), ("b", body));
+        await PostgresAlarmStore.Record(c, tx, id, "noted", actor.UserId, ct);
+        await Audit(c, tx, actor.ProjectId, actor.UserId, "alarm.note", id.ToString(), ct);
+        await tx.CommitAsync(ct);
+        return new { id = noteId };
     }
 
     public async Task Acknowledge(ProjectIdentity actor, Guid id, CancellationToken ct)

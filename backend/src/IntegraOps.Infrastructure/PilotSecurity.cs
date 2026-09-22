@@ -18,6 +18,13 @@ public sealed record KeyInput(string Name, string Scope);
 public sealed record PasswordInput(string CurrentPassword, string NewPassword);
 public sealed record ChannelInput(string Name, string Kind, string Target, string? Secret);
 public sealed record EnabledInput(bool Enabled);
+public sealed record AssignInput(string? UserId);
+public sealed record NoteInput(string? Body);
+public sealed record SavedViewInput(string Kind, string Name, string Query);
+public sealed record InviteInput(string Email, string Name, string Role);
+public sealed record ResetRequestInput(string Email);
+public sealed record TokenPasswordInput(string Password);
+public sealed record RetentionInput(int? FinishedTransactionDays, int? NotificationDays, int? AuditDays);
 public sealed record SessionUser(Guid Id, string Email, string Name);
 public sealed record ProjectIdentity(Guid ProjectId, Guid OrganizationId, Guid? UserId, string Role, string? Scope);
 

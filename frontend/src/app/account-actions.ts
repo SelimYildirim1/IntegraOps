@@ -3,7 +3,7 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
-import { api, apiMessage, ApiError, getProjects, login } from "@/lib/api";
+import { api, apiMessage, ApiError, completeToken, getProjects, login, requestPasswordReset } from "@/lib/api";
 import type { ActionState } from "@/lib/pilot-types";
 
 const cookieOptions = () => ({ httpOnly: true, sameSite: "lax" as const,
@@ -35,6 +35,24 @@ export async function createProjectAction(_state: ActionState, data: FormData): 
     await api("/me/projects", "POST", { name: String(data.get("name") ?? "") }, false);
     revalidatePath("/projects"); return { ok: true, message: "Proje oluşturuldu. Listeden açabilirsiniz." };
   } catch (e) { return { message: apiMessage(e) }; }
+}
+export async function forgotAction(_state: ActionState, data: FormData): Promise<ActionState> {
+  const email = String(data.get("email") ?? "");
+  if (email.length > 254) return { message: "E-posta adresini kontrol edin." };
+  try { await requestPasswordReset(email); }
+  catch (e) { if (!(e instanceof ApiError && e.status === 400)) return { message: apiMessage(e) }; }
+  // Same answer whether or not the address exists.
+  return { ok: true, message: "Bu adrese kayıtlı bir hesap varsa sıfırlama bağlantısı gönderildi. Gelen kutunuzu kontrol edin." };
+}
+export async function tokenPasswordAction(_state: ActionState, data: FormData): Promise<ActionState> {
+  const kind = String(data.get("kind") ?? ""); const token = String(data.get("token") ?? "");
+  const password = String(data.get("password") ?? ""); const confirm = String(data.get("confirm") ?? "");
+  if ((kind !== "invite" && kind !== "reset") || !/^[0-9a-f]{64}$/.test(token)) return { message: "Bağlantı geçersiz." };
+  if (password !== confirm) return { message: "İki parola aynı değil." };
+  try { await completeToken(kind, token, password); }
+  catch (e) { return { message: e instanceof ApiError && e.status === 404 ? "Bağlantı geçersiz ya da süresi dolmuş." : apiMessage(e) }; }
+  const jar = await cookies(); jar.delete("io_session"); jar.delete("io_project");
+  redirect("/login?done=" + kind);
 }
 export async function passwordAction(_state: ActionState, data: FormData): Promise<ActionState> {
   try {

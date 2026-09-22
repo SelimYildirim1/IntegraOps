@@ -58,6 +58,7 @@ services:
       Bootstrap__Key: ${BOOTSTRAP_KEY:?Run python3 scripts/init_local.py}
       Notifications__WebhookOrigins: ${WEBHOOK_ORIGINS:-http://webhook:8080}
       Notifications__PrivateWebhookOrigins: ${PRIVATE_WEBHOOK_ORIGINS:-http://webhook:8080}
+      Panel__BaseUrl: ${PANEL_BASE_URL:-http://localhost:3000}
     volumes:
       - protection_keys:/var/lib/integraops/keys
     ports:

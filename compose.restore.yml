@@ -47,6 +47,7 @@ services:
       Bootstrap__Key: ${RESTORE_BOOTSTRAP_KEY:?Required}
       Notifications__WebhookOrigins: http://webhook:8080
       Notifications__PrivateWebhookOrigins: http://webhook:8080
+      Panel__BaseUrl: http://127.0.0.1:${RESTORE_PANEL_PORT:-13000}
     volumes: ["protection_keys:/var/lib/integraops/keys"]
     networks: [default, host_access]
     ports: ["127.0.0.1:${RESTORE_API_PORT:-18080}:8080"]

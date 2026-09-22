@@ -2,13 +2,19 @@ export type Role = "owner" | "operator" | "viewer";
 export type Project = { id: string; name: string; role: Role };
 export type Access = { projectId: string; userId: string; role: Role };
 export type ActionState = { message: string; ok?: boolean; secret?: string };
-export type Member = { id: string; name: string; email: string; role: Role };
+export type Member = { id: string; name: string; email: string; role: Role; activated: boolean };
+export type Assignee = { id: string; name: string; role: Role };
+export type SavedView = { id: string; kind: "transactions" | "alarms"; name: string; query: string; created_at: string };
+export type RetentionInfo = {
+  policy: { finished_transaction_days: number | null; notification_days: number | null; audit_days: number | null; updated_at: string | null };
+  runs: { ran_at: string; transactions_deleted: number; deliveries_deleted: number; audit_deleted: number }[];
+};
 export type ProjectKey = { id: string; name: string; scope: string; key_prefix: string; revoked_at: string | null };
 export type Channel = { id: string; name: string; kind: string; target: string; enabled: boolean };
 export type Alarm = {
   id: string; flow: string; business_id: string; kind: string; step_code: string; error: string | null;
   opened_at: string; deadline_at: string | null; resolved_at: string | null; resolution: string | null;
-  acknowledged_at: string | null;
+  acknowledged_at: string | null; assigned_to: string | null; assigned_at: string | null; assigned_name: string | null; is_test: boolean;
 };
 export type AlarmPage = { items: Alarm[]; total: number; page: number; pageSize: number };
 export type AlarmDetail = {
@@ -16,6 +22,7 @@ export type AlarmDetail = {
   events: { id: string; kind: string; created_at: string; actor: string | null }[];
   deliveries: { id: string; channel: string; kind: string; event: string; state: string; attempts: number;
     available_at: string; last_error: string | null; sent_at: string | null }[];
+  notes: { id: string; body: string; created_at: string; author: string }[];
 };
 export type Operations = {
   counts: { outbox_pending: number; oldest_outbox_at: string | null; events_pending: number;
@@ -23,7 +30,9 @@ export type Operations = {
   audit: { action: string; target: string; created_at: string; actor: string | null }[];
 };
 export const roleNames: Record<Role, string> = { owner: "Proje sahibi", operator: "Operatör", viewer: "İzleyici" };
-export const eventNames: Record<string, string> = { opened: "Açıldı", resolved: "Kapandı", acknowledged: "Görüldü" };
+export const eventNames: Record<string, string> = {
+  opened: "Açıldı", resolved: "Kapandı", acknowledged: "Görüldü", assigned: "Sorumlu atandı", unassigned: "Sorumlu kaldırıldı", noted: "Not eklendi",
+};
 export const deliveryNames: Record<string, string> = {
   pending: "Gönderim bekliyor", sending: "Gönderiliyor", sent: "Gönderildi", dead: "Denemeler durdu", cancelled: "İptal edildi",
 };

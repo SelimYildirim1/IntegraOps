@@ -20,6 +20,7 @@ IntegraOps, farklı sistemlerden gelen iş olaylarını aynı işlem altında bi
 - Uygulama kurtarma provası: yedekten ayrı ortama dönüş ve 21 otomatik kontrol.
 - Sistem sağlığı: OpenTelemetry ölçümleri, Prometheus alarm kuralları, Grafana panosu.
 - Canlı işletim: imaj tabanlı yayın, geri dönüş, sunucu dışı yedek ve geri yükleme betikleri.
+- V1.1: işlem arama, tarih filtreleri, kayıtlı görünümler, test verisi ayrımı, alarm sorumlusu ve notları, e-posta daveti, parola sıfırlama, veri saklama, CSV dışa aktarım.
 
 ## Gerekenler
 
@@ -116,6 +117,7 @@ Mailpit, webhook ve kaynak örneği de çalışırken kapsamlı V1 kontrolü:
 
 ```bash
 python3 scripts/verify_v1.py --load 100
+python3 scripts/verify_v1_1.py
 ```
 
 Kesinti provası için ayrı, uygun yerel test zamanında:
@@ -202,6 +204,7 @@ Gerçek kaynak sistemin bağlanması için sözleşme `docs/entegrasyon-sozlesme
 - `docs/yol-haritasi.md`: Aşamalı geliştirme planı ve her aşamanın güncel durumu.
 - `docs/v1-paket-01.md`: İlk düzeltme paketinin değişiklikleri ve doğrulama sınırları.
 - `docs/v1-paket-02-kabul.md`: Kurtarma provası kabul kaydı.
+- `docs/v1-1.md`: V1.1 günlük kullanım özellikleri ve doğrulaması.
 - `docs/entegrasyon-sozlesmesi.md`: Gerçek kaynak sistem için olay, kimlik ve kuyruk kuralları.
 - `docs/izleme.md` ve `docs/canli-ortam.md`: Sistem sağlığı izleme ve canlı işletim rehberleri.
 - `IntegraOps_V1_00_Kurulum_ve_Test.md`: V1 modüllerinin ayrıntılı kurulum açıklaması.

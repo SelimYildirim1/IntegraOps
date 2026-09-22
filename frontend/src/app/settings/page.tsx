@@ -1,7 +1,7 @@
 import { api, apiMessage, getAccess } from "@/lib/api";
-import type { Member, ProjectKey, Channel } from "@/lib/pilot-types";
+import type { Member, ProjectKey, Channel, RetentionInfo } from "@/lib/pilot-types";
 import { roleNames } from "@/lib/pilot-types";
-import { Message, PageHead } from "@/components/ui";
+import { Message, number, PageHead, Time } from "@/components/ui";
 import ActionForm from "@/components/action-form";
 import { adminAction } from "@/app/admin-actions";
 
@@ -13,38 +13,51 @@ function Op({ value, id }: { value: string; id?: string }) {
 const scopeNames: Record<string, string> = { ingest: "Bildirim gönderir", read: "Takip verilerini okur", legacy: "Eski geniş yetki" };
 
 export default async function SettingsPage() {
-  let members: Member[], keys: ProjectKey[], channels: Channel[];
+  let members: Member[], keys: ProjectKey[], channels: Channel[], retention: RetentionInfo;
   try {
     const access = await getAccess();
     if (access.role !== "owner") return <Message title="Proje ayarları" description="Kullanıcıları, anahtarları ve bildirim kanallarını yalnızca proje sahibi yönetir." />;
-    [members, keys, channels] = await Promise.all([api<Member[]>("/members"), api<ProjectKey[]>("/keys"), api<Channel[]>("/channels")]);
+    [members, keys, channels, retention] = await Promise.all([api<Member[]>("/members"), api<ProjectKey[]>("/keys"), api<Channel[]>("/channels"), api<RetentionInfo>("/retention")]);
   } catch (e) { return <Message title="Ayarlar yüklenemedi" description={apiMessage(e)} />; }
   const activeKeys = keys.filter(k => !k.revoked_at), revokedKeys = keys.filter(k => k.revoked_at);
+  const p = retention.policy;
 
   return <>
-    <PageHead title="Proje ayarları" lede="Bu projeye kimlerin erişeceği, hangi sistemlerin bildirim göndereceği ve alarmların nereye iletileceği." />
+    <PageHead title="Proje ayarları" lede="Bu projeye kimlerin erişeceği, hangi sistemlerin bildirim göndereceği, alarmların nereye iletileceği ve kayıtların ne kadar saklanacağı." />
 
     <section className="surface" id="members">
       <div className="surface-head"><div><h2>Kullanıcılar</h2><p>Proje sahibi bütün ayarları yönetir; operatör akış ve alarm işlemlerini yapar; izleyici yalnızca görüntüler.</p></div>
         <span className="count">{members.length} kullanıcı</span></div>
-      <div className="table-wrap"><table><thead><tr><th>Kullanıcı</th><th>Rol</th><th></th></tr></thead><tbody>
+      <div className="table-wrap"><table><thead><tr><th>Kullanıcı</th><th>Rol</th><th>Durum</th><th></th></tr></thead><tbody>
         {members.map(m => <tr key={m.id}><td>{m.name}<small>{m.email}</small></td><td>{roleNames[m.role]}</td>
+          <td>{m.activated ? <span className="badge good">Etkin</span> : <span className="badge info">Davet bekliyor</span>}</td>
           <td><div className="cell-actions"><ActionForm action={adminAction} label="Projeden çıkar" compact tone="danger"><Op value="member-remove" id={m.id} /></ActionForm></div></td></tr>)}
       </tbody></table></div>
       <div className="surface-body" style={{ borderTop: "1px solid var(--line-2)" }}>
-        <h3>Kullanıcı ekle ya da rolünü değiştir</h3>
-        <p className="help">Aynı e-postayla kayıtlı bir kullanıcı varsa parolayı boş bırakın; yalnızca rolü güncellenir. Yeni kullanıcı için başlangıç parolası belirleyin.</p>
-        <ActionForm action={adminAction} label="Kullanıcıyı kaydet"><Op value="member-save" />
+        <h3>E-posta ile davet et</h3>
+        <p className="help">Kullanıcıya 7 gün geçerli bir bağlantı gönderilir; parolasını kendisi belirler. Aynı e-postayla kayıtlı bir hesap varsa yalnızca projeye eklenir ve bilgilendirilir. Daveti yeniden göndermek için aynı formu tekrar kullanın.</p>
+        <ActionForm action={adminAction} label="Davet gönder"><Op value="member-invite" />
           <div className="form-grid">
-            <div className="field"><label htmlFor="m-name">Ad soyad</label><input id="m-name" name="name" required maxLength={120} /></div>
-            <div className="field"><label htmlFor="m-email">E-posta</label><input id="m-email" name="email" type="email" required maxLength={254} /></div>
-            <div className="field"><label htmlFor="m-role">Rol</label><select id="m-role" name="role" defaultValue="viewer">
+            <div className="field"><label htmlFor="i-name">Ad soyad</label><input id="i-name" name="name" required maxLength={120} /></div>
+            <div className="field"><label htmlFor="i-email">E-posta</label><input id="i-email" name="email" type="email" required maxLength={254} /></div>
+            <div className="field"><label htmlFor="i-role">Rol</label><select id="i-role" name="role" defaultValue="viewer">
               <option value="viewer">İzleyici</option><option value="operator">Operatör</option><option value="owner">Proje sahibi</option></select></div>
-            <div className="field"><label htmlFor="m-pass">Başlangıç parolası</label>
-              <input id="m-pass" name="password" type="password" minLength={12} maxLength={128} autoComplete="new-password" />
-              <span className="hint">En az 12 karakter. Mevcut kullanıcı için boş bırakın.</span></div>
           </div>
         </ActionForm>
+        <details className="details"><summary>Parola belirleyerek ekle ya da rol değiştir</summary>
+          <p className="help">Aynı e-postayla kayıtlı bir kullanıcı varsa parolayı boş bırakın; yalnızca rolü güncellenir. Yeni kullanıcı için başlangıç parolası belirleyin.</p>
+          <ActionForm action={adminAction} label="Kullanıcıyı kaydet"><Op value="member-save" />
+            <div className="form-grid">
+              <div className="field"><label htmlFor="m-name">Ad soyad</label><input id="m-name" name="name" required maxLength={120} /></div>
+              <div className="field"><label htmlFor="m-email">E-posta</label><input id="m-email" name="email" type="email" required maxLength={254} /></div>
+              <div className="field"><label htmlFor="m-role">Rol</label><select id="m-role" name="role" defaultValue="viewer">
+                <option value="viewer">İzleyici</option><option value="operator">Operatör</option><option value="owner">Proje sahibi</option></select></div>
+              <div className="field"><label htmlFor="m-pass">Başlangıç parolası</label>
+                <input id="m-pass" name="password" type="password" minLength={12} maxLength={128} autoComplete="new-password" />
+                <span className="hint">En az 12 karakter. Mevcut kullanıcı için boş bırakın.</span></div>
+            </div>
+          </ActionForm>
+        </details>
       </div>
     </section>
 
@@ -96,6 +109,30 @@ export default async function SettingsPage() {
               <span className="hint">Boş bırakılırsa üretilir ve bir kez gösterilir. E-posta kanalında kullanılmaz.</span></div>
           </div>
         </ActionForm>
+      </div>
+    </section>
+
+    <section className="surface" id="retention">
+      <div className="surface-head"><div><h2>Veri saklama</h2><p>Süresi dolan kayıtlar worker tarafından günde bir silinir. Boş bırakılan alan süresiz saklama demektir. Açık alarmı ya da işlenmemiş bildirimi olan işlemler silinmez.</p></div>
+        {p.updated_at && <span className="count">Son güncelleme <Time value={p.updated_at} /></span>}</div>
+      <div className="surface-body">
+        <ActionForm action={adminAction} label="Kuralları kaydet"><Op value="retention" />
+          <div className="form-grid">
+            <div className="field"><label htmlFor="r-tx">Tamamlanan ve hatalı işlemler (gün)</label>
+              <input id="r-tx" name="transactions" type="number" min={7} max={3650} defaultValue={p.finished_transaction_days ?? ""} placeholder="süresiz" />
+              <span className="hint">İşlemle birlikte olayları, alarm geçmişi ve notları silinir. En az 7 gün.</span></div>
+            <div className="field"><label htmlFor="r-nt">Gönderilmiş bildirim kayıtları (gün)</label>
+              <input id="r-nt" name="notifications" type="number" min={7} max={3650} defaultValue={p.notification_days ?? ""} placeholder="süresiz" />
+              <span className="hint">E-posta ve webhook gönderim denemeleri. En az 7 gün.</span></div>
+            <div className="field"><label htmlFor="r-au">Yönetim geçmişi (gün)</label>
+              <input id="r-au" name="audit" type="number" min={30} max={3650} defaultValue={p.audit_days ?? ""} placeholder="süresiz" />
+              <span className="hint">Sistem ekranındaki denetim kayıtları. En az 30 gün.</span></div>
+          </div>
+        </ActionForm>
+        {retention.runs.length > 0 && <div className="table-wrap"><table><thead><tr><th>Çalışma</th><th className="right">İşlem</th><th className="right">Bildirim</th><th className="right">Denetim</th></tr></thead><tbody>
+          {retention.runs.map((r, i) => <tr key={i}><td className="nowrap"><Time value={r.ran_at} /></td>
+            <td className="right num">{number(r.transactions_deleted)}</td><td className="right num">{number(r.deliveries_deleted)}</td><td className="right num">{number(r.audit_deleted)}</td></tr>)}
+        </tbody></table></div>}
       </div>
     </section>
   </>;

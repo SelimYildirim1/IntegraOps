@@ -81,8 +81,19 @@ public static class PilotEndpoints
         { await s.ChangePassword(User(c).Id, input, ct); return Results.NoContent(); });
 
         projectApi.MapGet("/access", (HttpContext c) => Results.Ok(Actor(c))).WithMetadata(new ProjectRule());
-        projectApi.MapGet("/alarms", async (HttpContext c, PostgresPilotQueries q, string? state, string? flow, int? page, CancellationToken ct)
-            => Results.Ok(await q.Alarms(Actor(c).ProjectId, state, flow, page ?? 1, ct))).WithMetadata(new ProjectRule());
+        projectApi.MapGet("/alarms", async (HttpContext c, PostgresPilotQueries q, string? state, string? flow, int? page,
+            string? search, string? from, string? to, string? test, string? assigned, CancellationToken ct)
+            => Results.Ok(await q.Alarms(Actor(c).ProjectId,
+                PostgresPilotQueries.ParseAlarmFilter(state, flow, search, from, to, test, assigned, Actor(c).UserId), page ?? 1, ct)))
+            .WithMetadata(new ProjectRule());
+        projectApi.MapPost("/alarms/{id:guid}/assign", async (HttpContext c, Guid id, AssignInput input, PostgresPilotQueries q, CancellationToken ct) =>
+        {
+            var target = input.UserId == "me" ? Actor(c).UserId : string.IsNullOrEmpty(input.UserId) ? null
+                : Guid.TryParse(input.UserId, out var parsed) ? parsed : throw new PilotHttpException(400, "Kullanıcı kimliği geçersiz.");
+            await q.Assign(Actor(c), id, target, ct); return Results.NoContent();
+        }).WithMetadata(new ProjectRule("owner,operator"));
+        projectApi.MapPost("/alarms/{id:guid}/notes", async (HttpContext c, Guid id, NoteInput input, PostgresPilotQueries q, CancellationToken ct)
+            => Results.Json(await q.AddNote(Actor(c), id, input.Body, ct), statusCode: 201)).WithMetadata(new ProjectRule("owner,operator"));
         projectApi.MapGet("/alarms/{id:guid}", async (HttpContext c, Guid id, PostgresPilotQueries q, CancellationToken ct)
             => Results.Ok(await q.Alarm(Actor(c).ProjectId, id, ct))).WithMetadata(new ProjectRule());
         projectApi.MapPost("/alarms/{id:guid}/acknowledge", async (HttpContext c, Guid id, PostgresPilotQueries q, CancellationToken ct) =>
@@ -110,5 +121,65 @@ public static class PilotEndpoints
         { await q.SetChannel(Actor(c), id, input.Enabled, ct); return Results.NoContent(); }).WithMetadata(new ProjectRule("owner"));
         projectApi.MapGet("/operations", async (HttpContext c, PostgresPilotQueries q, CancellationToken ct)
             => Results.Ok(await q.Operations(Actor(c).ProjectId, ct))).WithMetadata(new ProjectRule("owner"));
+
+        MapOperations(app, projectApi);
+    }
+
+    /// <summary>V1.1: saved views, invitations, password reset, retention and CSV exports.</summary>
+    private static void MapOperations(WebApplication app, RouteGroupBuilder projectApi)
+    {
+        // Saved views belong to the signed-in user; every role may keep its own.
+        projectApi.MapGet("/views", async (HttpContext c, PostgresOperationsQueries q, string? kind, CancellationToken ct)
+            => Results.Ok(await q.SavedViews(Actor(c), kind, ct))).WithMetadata(new ProjectRule());
+        projectApi.MapPost("/views", async (HttpContext c, SavedViewInput input, PostgresOperationsQueries q, CancellationToken ct)
+            => Results.Json(await q.SaveView(Actor(c), input, ct), statusCode: 201)).WithMetadata(new ProjectRule());
+        projectApi.MapDelete("/views/{id:guid}", async (HttpContext c, Guid id, PostgresOperationsQueries q, CancellationToken ct) =>
+        { await q.DeleteView(Actor(c), id, ct); return Results.NoContent(); }).WithMetadata(new ProjectRule());
+
+        // Owners and operators pick an alarm assignee from this list; it exposes only names.
+        projectApi.MapGet("/members/assignable", async (HttpContext c, PostgresIdentityStore s, CancellationToken ct)
+            => Results.Ok(await s.Assignable(Actor(c).ProjectId, ct))).WithMetadata(new ProjectRule("owner,operator"));
+        projectApi.MapPost("/members/invite", async (HttpContext c, InviteInput input, PostgresOperationsQueries q, CancellationToken ct)
+            => Results.Json(await q.Invite(Actor(c), input, ct), statusCode: 201)).WithMetadata(new ProjectRule("owner"));
+
+        // Public account links. Rate limited like login; responses never reveal whether an address exists.
+        app.MapPost("/api/v1/auth/password-reset", async (ResetRequestInput input, PostgresOperationsQueries q, CancellationToken ct) =>
+        { await q.RequestPasswordReset(input, ct); return Results.Accepted(); }).RequireRateLimiting("login");
+        app.MapGet("/api/v1/auth/tokens/{token}", async (string token, PostgresOperationsQueries q, CancellationToken ct)
+            => Results.Ok(await q.TokenInfo(token, ct))).RequireRateLimiting("login");
+        app.MapPost("/api/v1/auth/invitations/{token}", async (string token, TokenPasswordInput input, PostgresOperationsQueries q, CancellationToken ct) =>
+        { await q.CompleteToken(token, "invite", input, ct); return Results.NoContent(); }).RequireRateLimiting("login");
+        app.MapPost("/api/v1/auth/password-reset/{token}", async (string token, TokenPasswordInput input, PostgresOperationsQueries q, CancellationToken ct) =>
+        { await q.CompleteToken(token, "reset", input, ct); return Results.NoContent(); }).RequireRateLimiting("login");
+
+        projectApi.MapGet("/retention", async (HttpContext c, PostgresOperationsQueries q, CancellationToken ct)
+            => Results.Ok(await q.Retention(Actor(c).ProjectId, ct))).WithMetadata(new ProjectRule("owner"));
+        projectApi.MapPut("/retention", async (HttpContext c, RetentionInput input, PostgresOperationsQueries q, CancellationToken ct) =>
+        { await q.SetRetention(Actor(c), input, ct); return Results.NoContent(); }).WithMetadata(new ProjectRule("owner"));
+
+        // Exports carry customer data; viewers read on screen but do not download.
+        projectApi.MapGet("/transactions/export", async (HttpContext c, PostgresOperationsQueries q, string? flow, string? status, string? delay,
+            string? search, string? from, string? to, string? test, CancellationToken ct) =>
+        {
+            var query = IntegraOps.Application.InputValidation.TransactionList(flow, status, delay, 1, 100, search, from, to, test);
+            var csv = await q.TransactionsCsv(Actor(c).ProjectId, query, ct);
+            await Audit(c, "export.transactions", ct);
+            return Results.Text(csv, "text/csv; charset=utf-8", System.Text.Encoding.UTF8);
+        }).WithMetadata(new ProjectRule("owner,operator"));
+        projectApi.MapGet("/alarms/export", async (HttpContext c, PostgresPilotQueries alarms, PostgresOperationsQueries q, string? state, string? flow,
+            string? search, string? from, string? to, string? test, string? assigned, CancellationToken ct) =>
+        {
+            var filter = PostgresPilotQueries.ParseAlarmFilter(state, flow, search, from, to, test, assigned, Actor(c).UserId);
+            var rows = await alarms.AlarmsForExport(Actor(c).ProjectId, filter, PostgresOperationsQueries.ExportLimit, ct);
+            await Audit(c, "export.alarms", ct);
+            return Results.Text(q.AlarmsCsv(rows), "text/csv; charset=utf-8", System.Text.Encoding.UTF8);
+        }).WithMetadata(new ProjectRule("owner,operator"));
+    }
+
+    private static async Task Audit(HttpContext c, string action, CancellationToken ct)
+    {
+        var actor = Actor(c);
+        await using var connection = await c.RequestServices.GetRequiredService<Npgsql.NpgsqlDataSource>().OpenConnectionAsync(ct);
+        await PilotDb.Audit(connection, null, actor.ProjectId, actor.UserId, action, c.Request.QueryString.Value is { Length: > 0 and <= 200 } qs ? qs : "-", ct);
     }
 }

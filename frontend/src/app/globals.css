@@ -366,3 +366,25 @@ th.right, td.right { text-align: right; }
   .auth { margin-top: 4vh; }
   .rail li { grid-template-columns: 24px 1fr; column-gap: 12px; }
 }
+
+/* V1.1: kayıtlı görünümler, sorumlu, notlar */
+.saved-views { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; padding: 10px 22px; border-bottom: 1px solid var(--line-2); font-size: 13px; }
+.chips { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.chip { display: inline-flex; align-items: center; gap: 2px; padding: 3px 4px 3px 10px; border: 1px solid var(--line); border-radius: 999px; background: var(--surface); }
+.chip.active { border-color: var(--signal); background: var(--signal-tint); }
+.chip a { color: var(--ink); }
+.chip .inline-form .button { padding: 0 6px; min-height: 22px; line-height: 22px; font-size: 14px; }
+.chip .inline-form .form-status { display: none; }
+.chip-input { padding: 6px 10px; border: 1px solid var(--line); border-radius: var(--radius-s); font: inherit; font-size: 13px; margin-right: 8px; min-width: 160px; }
+.saved-views .inline-form fieldset { display: flex; align-items: center; }
+.badge.test { background: var(--mute-tint); color: var(--ink-2); margin-left: 8px; font-size: 11px; }
+.assign-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.notes { list-style: none; padding: 0; margin: 0; display: grid; gap: 12px; }
+.notes li { padding: 12px 14px; border: 1px solid var(--line-2); border-radius: var(--radius-s); background: var(--surface-2); }
+.notes .note-head { display: flex; justify-content: space-between; gap: 12px; font-size: 13px; margin-bottom: 6px; }
+.notes p { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 14px; }
+.details { margin-top: 18px; }
+.details summary { cursor: pointer; color: var(--signal-ink); font-size: 13px; }
+.details > * + * { margin-top: 12px; }
+.field textarea { resize: vertical; }
+.muted { color: var(--ink-3); }
