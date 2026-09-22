@@ -1,0 +1,26 @@
+# Rendered by scripts/live/render_alertmanager.py into LIVE_STATE_DIR/alertmanager.yml.
+route:
+  receiver: operations
+  group_by: [alertname]
+  group_wait: 30s
+  group_interval: 5m
+  repeat_interval: 4h
+  routes:
+    - matchers: [severity="critical"]
+      receiver: operations
+      repeat_interval: 1h
+
+receivers:
+  - name: operations
+    email_configs:
+      - to: ${OPS_ALERT_EMAIL}
+        from: ${SMTP_FROM}
+        smarthost: ${SMTP_HOST}:${SMTP_PORT}
+        auth_username: ${SMTP_USER}
+        auth_password: ${SMTP_PASSWORD}
+        require_tls: ${SMTP_STARTTLS}
+        send_resolved: true
+${WEBHOOK_BLOCK}
+inhibit_rules:
+  - source_matchers: [alertname="IntegraOpsHealthMetricsMissing"]
+    target_matchers: [alertname="IntegraOpsWorkerHeartbeatStale"]

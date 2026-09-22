@@ -73,6 +73,8 @@ public sealed class NotificationDispatcher(NpgsqlDataSource source, IDataProtect
         catch (Exception ex) { error = "transport_" + ex.GetType().Name; }
         var attempts = (int)job["attempts"]! + 1;
         var state = error is null ? "sent" : permanent || attempts >= 8 ? "dead" : "pending";
+        IntegraOpsMetrics.Deliveries.Add(1, new KeyValuePair<string, object?>("kind", (string)job["kind"]!),
+            new KeyValuePair<string, object?>("outcome", state == "pending" ? "retry" : state));
         var seconds = Math.Min(3600, Math.Max(1, configuration.GetValue("Notifications:RetryBaseSeconds", 30)) * Math.Pow(2, attempts - 1))
             + Random.Shared.Next(0, 4);
         await using var finish = await source.OpenConnectionAsync(ct);

@@ -1,0 +1,111 @@
+# Used only by scripts/rehearse_restore.py with an explicit, unique project name.
+# Never combine this file with docker-compose.yml or compose.live.yml.
+services:
+  postgres:
+    image: ${RESTORE_POSTGRES_IMAGE:?Required}
+    pull_policy: never
+    environment:
+      POSTGRES_USER: integraops
+      POSTGRES_DB: integraops
+      POSTGRES_PASSWORD: ${RESTORE_DB_PASSWORD:?Required}
+    volumes: ["postgres_data:/var/lib/postgresql/data"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U integraops -d integraops"]
+      interval: 2s
+      timeout: 3s
+      retries: 60
+  rabbitmq:
+    image: ${RESTORE_RABBIT_IMAGE:?Required}
+    pull_policy: never
+    environment:
+      RABBITMQ_DEFAULT_USER: integraops
+      RABBITMQ_DEFAULT_PASS: ${RESTORE_RABBIT_PASSWORD:?Required}
+    volumes: ["rabbitmq_data:/var/lib/rabbitmq"]
+    healthcheck:
+      # A root CLI run before server start would create an unreadable Erlang cookie.
+      test: ["CMD-SHELL", "test -f /var/lib/rabbitmq/.erlang.cookie && rabbitmq-diagnostics -q ping"]
+      interval: 3s
+      timeout: 5s
+      retries: 60
+  keys:
+    image: ${RESTORE_API_IMAGE:?Required}
+    pull_policy: never
+    profiles: [maintenance]
+    user: "0:0"
+    entrypoint: ["/bin/sh", "-ec"]
+    command:
+      - "tar -xzf /backup/protection-keys.tar.gz -C /var/lib/integraops/keys && chown -R app:app /var/lib/integraops/keys"
+    volumes:
+      - protection_keys:/var/lib/integraops/keys
+      - ${RESTORE_BACKUP_DIR:?Required}:/backup:ro
+  api:
+    image: ${RESTORE_API_IMAGE:?Required}
+    pull_policy: never
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      ConnectionStrings__Postgres: "Host=postgres;Database=integraops;Username=integraops;Password=${RESTORE_DB_PASSWORD};Timeout=5;Command Timeout=15"
+      Bootstrap__Key: ${RESTORE_BOOTSTRAP_KEY:?Required}
+      Notifications__WebhookOrigins: http://webhook:8080
+      Notifications__PrivateWebhookOrigins: http://webhook:8080
+    volumes: ["protection_keys:/var/lib/integraops/keys"]
+    networks: [default, host_access]
+    ports: ["127.0.0.1:${RESTORE_API_PORT:-18080}:8080"]
+    depends_on:
+      postgres: { condition: service_healthy }
+  worker:
+    image: ${RESTORE_WORKER_IMAGE:?Required}
+    pull_policy: never
+    environment:
+      ConnectionStrings__Postgres: "Host=postgres;Database=integraops;Username=integraops;Password=${RESTORE_DB_PASSWORD};Timeout=5;Command Timeout=15"
+      RabbitMQ__Uri: "amqp://integraops:${RESTORE_RABBIT_PASSWORD}@rabbitmq:5672/"
+      Notifications__WebhookOrigins: http://webhook:8080
+      Notifications__PrivateWebhookOrigins: http://webhook:8080
+      Notifications__RetryBaseSeconds: 2
+      Smtp__Host: mailpit
+      Smtp__Port: 1025
+      Smtp__StartTls: "false"
+      Smtp__From: restore@local.test
+    volumes: ["protection_keys:/var/lib/integraops/keys"]
+    depends_on:
+      postgres: { condition: service_healthy }
+      rabbitmq: { condition: service_healthy }
+  panel:
+    build: { context: ./frontend }
+    environment:
+      INTEGRAOPS_API_URL: http://api:8080
+      PANEL_COOKIE_SECURE: "false"
+    networks: [default, host_access]
+    ports: ["127.0.0.1:${RESTORE_PANEL_PORT:-13000}:3000"]
+  mailpit:
+    image: ${RESTORE_MAILPIT_IMAGE:?Required}
+    pull_policy: never
+    environment:
+      MP_DATABASE: /data/mailpit.db
+      MP_MAX_MESSAGES: 1000
+    volumes: ["mailpit_data:/data"]
+    networks: [default, host_access]
+    ports: ["127.0.0.1:${RESTORE_MAIL_PORT:-18025}:8025"]
+  webhook:
+    image: python:3.13-alpine
+    command: ["python", "-u", "/app/receiver.py"]
+    environment:
+      WEBHOOK_SECRET: ${RESTORE_WEBHOOK_SECRET:?Required}
+    volumes:
+      - ./samples/webhook/receiver.py:/app/receiver.py:ro
+      - webhook_data:/data
+    networks: [default, host_access]
+    ports: ["127.0.0.1:${RESTORE_WEBHOOK_PORT:-18082}:8080"]
+
+networks:
+  default:
+    internal: true
+  # Docker does not publish ports on internal networks. Only services with
+  # loopback ports join this bridge; postgres, rabbitmq and worker stay internal.
+  host_access: {}
+
+volumes:
+  postgres_data:
+  rabbitmq_data:
+  protection_keys:
+  mailpit_data:
+  webhook_data:

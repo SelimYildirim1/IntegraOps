@@ -1,0 +1,25 @@
+# Local Alertmanager: sends to the local Mailpit only. Production uses alertmanager.live.yml.
+route:
+  receiver: operations-email
+  group_by: [alertname]
+  group_wait: 30s
+  group_interval: 5m
+  repeat_interval: 4h
+  routes:
+    - matchers: [severity="critical"]
+      receiver: operations-email
+      repeat_interval: 1h
+
+receivers:
+  - name: operations-email
+    email_configs:
+      - to: operations@local.test
+        from: alertmanager@local.test
+        smarthost: mailpit:1025
+        require_tls: false
+        send_resolved: true
+
+inhibit_rules:
+  # When the API cannot read the database, the missing heartbeat gauge is a consequence, not a second cause.
+  - source_matchers: [alertname="IntegraOpsHealthMetricsMissing"]
+    target_matchers: [alertname="IntegraOpsWorkerHeartbeatStale"]

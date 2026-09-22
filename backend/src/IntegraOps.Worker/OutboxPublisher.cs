@@ -26,6 +26,7 @@ public sealed class OutboxPublisher(ConnectionFactory factory, OutboxDispatcher 
                     deadline.CancelAfter(TimeSpan.FromSeconds(10));
                     if (!await dispatcher.PublishNextAsync(channel, deadline.Token))
                         await Task.Delay(TimeSpan.FromMilliseconds(250), stoppingToken);
+                    else IntegraOpsMetrics.OutboxPublished.Add(1);
                 }
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { break; }

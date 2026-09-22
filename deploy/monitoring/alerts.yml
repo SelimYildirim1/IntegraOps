@@ -1,0 +1,150 @@
+# Alert rules for IntegraOps' own health. Thresholds are pilot defaults; tune them with real traffic.
+# Metric names come from OTLP translation: dots become underscores, units become suffixes.
+groups:
+  - name: integraops-pipeline
+    rules:
+      - alert: IntegraOpsHealthMetricsMissing
+        expr: absent_over_time(integraops_outbox_pending[2m])
+        for: 1m
+        labels: { severity: critical }
+        annotations:
+          summary: "IntegraOps API sağlık ölçümü göndermiyor"
+          description: "API kapalı, veritabanına ulaşamıyor ya da ölçüm aktarımı durdu. API ve PostgreSQL günlüklerine bakın."
+
+      - alert: IntegraOpsWorkerHeartbeatStale
+        expr: integraops_worker_heartbeat_age_seconds > 60 or absent_over_time(integraops_worker_heartbeat_age_seconds[5m])
+        for: 1m
+        labels: { severity: critical }
+        annotations:
+          summary: "Worker yaşam sinyali {{ $value | humanizeDuration }} önce"
+          description: "Worker süreci çalışmıyor ya da veritabanına yazamıyor."
+
+      - alert: IntegraOpsEventsNotProgressing
+        expr: integraops_events_oldest_unprocessed_age_seconds > 120
+        for: 2m
+        labels: { severity: critical }
+        annotations:
+          summary: "Olaylar ilerlemiyor: en eski işlenmemiş olay {{ $value | humanizeDuration }} bekliyor"
+          description: "Worker açık görünse de olaylar işlenmiyor. RabbitMQ bağlantısını, kuyruk tüketicisini ve worker günlüklerini kontrol edin."
+
+      - alert: IntegraOpsOutboxBacklog
+        expr: integraops_outbox_oldest_age_seconds > 60
+        for: 2m
+        labels: { severity: warning }
+        annotations:
+          summary: "Outbox'ta {{ $value | humanizeDuration }} bekleyen olay var"
+          description: "API'nin kabul ettiği olaylar RabbitMQ'ya aktarılamıyor. Broker ve worker yayımlayıcısını kontrol edin."
+
+      - alert: IntegraOpsDelayScannerStale
+        expr: time() - integraops_delay_scan_last_success_seconds > 120 or absent_over_time(integraops_delay_scan_last_success_seconds[5m])
+        for: 1m
+        labels: { severity: critical }
+        annotations:
+          summary: "Gecikme tarayıcısı 2 dakikadır başarılı çalışmadı"
+          description: "Süre aşımı alarmları açılmıyor olabilir. Worker günlüklerinde 'Gecikme kontrolü' uyarılarına bakın."
+
+  - name: integraops-notifications
+    rules:
+      - alert: IntegraOpsNotificationDeliveryStopped
+        expr: increase(integraops_notifications_deliveries_total{outcome="dead"}[15m]) > 0
+        labels: { severity: warning }
+        annotations:
+          summary: "Alarm bildirimi teslim edilemedi ve denemeler durdu ({{ $labels.kind }})"
+          description: "Alarm detayındaki gönderim hatasını giderip yeniden deneme başlatın."
+
+      - alert: IntegraOpsNotificationRetriesHigh
+        expr: |
+          sum by (kind) (increase(integraops_notifications_deliveries_total{outcome="retry"}[15m]))
+            / clamp_min(sum by (kind) (increase(integraops_notifications_deliveries_total[15m])), 1) > 0.5
+          and sum by (kind) (increase(integraops_notifications_deliveries_total[15m])) >= 4
+        for: 5m
+        labels: { severity: warning }
+        annotations:
+          summary: "{{ $labels.kind }} bildirimlerinin yarısından fazlası tekrar deneniyor"
+          description: "SMTP sunucusu veya webhook alıcısı hata veriyor olabilir."
+
+  - name: integraops-api
+    rules:
+      - alert: IntegraOpsApiErrorRate
+        expr: |
+          sum(rate(http_server_request_duration_seconds_count{job="integraops/api", http_response_status_code=~"5.."}[5m]))
+            / sum(rate(http_server_request_duration_seconds_count{job="integraops/api"}[5m])) > 0.05
+        for: 5m
+        labels: { severity: warning }
+        annotations:
+          summary: "API isteklerinin %{{ $value | humanizePercentage }} kadarı 5xx"
+          description: "Veritabanı erişimi veya uygulama hatası. API günlüklerindeki TraceId ile izlere bakın."
+
+      - alert: IntegraOpsApiLatencyHigh
+        expr: |
+          histogram_quantile(0.95, sum by (le) (rate(http_server_request_duration_seconds_bucket{job="integraops/api", http_route!~"/health.*"}[5m]))) > 1
+        for: 10m
+        labels: { severity: warning }
+        annotations:
+          summary: "API yanıt süresi p95 {{ $value | humanizeDuration }}"
+          description: "Yavaş sorgular veya kaynak yetersizliği. PostgreSQL bağlantı ve CPU kullanımına bakın."
+
+  - name: integraops-infrastructure
+    rules:
+      - alert: RabbitMQDown
+        expr: up{job="rabbitmq"} == 0
+        for: 1m
+        labels: { severity: critical }
+        annotations:
+          summary: "RabbitMQ ölçümlerine ulaşılamıyor"
+          description: "Yeni olaylar outbox'ta birikir; broker dönünce aktarılır."
+
+      - alert: IntegraOpsQueueBacklog
+        expr: sum(rabbitmq_detailed_queue_messages_ready{queue="integraops.events.v1"}) > 1000
+        for: 5m
+        labels: { severity: warning }
+        annotations:
+          summary: "Olay kuyruğunda {{ $value }} mesaj bekliyor"
+          description: "Tüketim hızı geliş hızının altında. Worker kapasitesini ve veritabanı süresini kontrol edin."
+
+      - alert: IntegraOpsQueueNoConsumer
+        expr: sum(rabbitmq_detailed_queue_consumers{queue="integraops.events.v1"}) == 0
+        for: 2m
+        labels: { severity: critical }
+        annotations:
+          summary: "Olay kuyruğunun tüketicisi yok"
+          description: "Worker RabbitMQ'ya bağlı değil."
+
+      - alert: IntegraOpsDeadLetterMessages
+        expr: sum(rabbitmq_detailed_queue_messages{queue="integraops.events.dead.v1"}) > 0
+        for: 5m
+        labels: { severity: warning }
+        annotations:
+          summary: "İnceleme kuyruğunda {{ $value }} geçersiz mesaj var"
+          description: "Worker'ın reddettiği kuyruk kayıtları var. RabbitMQ yönetim ekranından inceleyin."
+
+      - alert: PostgresConnectionsHigh
+        expr: integraops_db_connections / integraops_db_max_connections > 0.8
+        for: 5m
+        labels: { severity: warning }
+        annotations:
+          summary: "PostgreSQL bağlantılarının %{{ $value | humanizePercentage }} kadarı kullanımda"
+
+      - alert: HostDiskSpaceLow
+        expr: node_filesystem_avail_bytes{fstype!~"tmpfs|overlay|squashfs|virtiofs|fuse.*|nsfs"} / node_filesystem_size_bytes < 0.15
+        for: 10m
+        labels: { severity: warning }
+        annotations:
+          summary: "{{ $labels.mountpoint }} diskinde %15'ten az boş alan kaldı"
+
+  - name: integraops-backup
+    rules:
+      - alert: IntegraOpsBackupStale
+        expr: time() - integraops_backup_last_success_timestamp_seconds > 26 * 3600
+        labels: { severity: critical }
+        annotations:
+          summary: "Son başarılı yedek {{ $value | humanizeDuration }} önce alındı"
+          description: "Zamanlanmış yedekleme çalışmıyor ya da başarısız oluyor. Yedek günlüğüne bakın."
+
+      - alert: IntegraOpsBackupNeverRecorded
+        expr: absent(integraops_backup_last_success_timestamp_seconds)
+        for: 30m
+        labels: { severity: warning }
+        annotations:
+          summary: "Bu sunucuda başarılı yedek kaydı yok"
+          description: "Yedek betiği ölçüm dosyasını yazmadı. Zamanlanmış görevi ve ölçüm dizinini kontrol edin."

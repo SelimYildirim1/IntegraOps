@@ -51,9 +51,9 @@ export default async function OperationsPage() {
         <div className="surface-head"><h2>Sayılar ne anlama geliyor</h2></div>
         <div className="surface-body">
           <p className="help"><strong>Kuyruğa aktarılacak olay:</strong> API'nin kabul edip henüz kuyruğa yazmadığı bildirimler. Bir dakikadan uzun süre bekleyen varsa dikkat gerekir.</p>
-          <p className="help"><strong>İşlenmeyi bekleyen bildirim:</strong> Kuyruğa ulaşmış ama worker tarafından henüz işlenmemiş bildirimler.</p>
+          <p className="help"><strong>İşlenmeyi bekleyen bildirim:</strong> API'nin kabul ettiği ve worker'ın henüz işlemediği bütün olaylar. Henüz kuyruğa aktarılmamış olaylar da bu sayıya dahildir; iki sayıyı toplamayın.</p>
           <p className="help"><strong>Gönderim bekleyen alarm bildirimi:</strong> E-posta ya da webhook için sırada bekleyen alarm iletileri.</p>
-          <p className="help"><strong>Denemesi duran bildirim:</strong> Tekrar denemeleri tükenmiş iletiler. Alarm detayından yeniden deneme başlatılabilir.</p>
+          <p className="help"><strong>Denemesi duran bildirim:</strong> Deneme sınırına ulaşmış veya kalıcı bir ret nedeniyle durmuş iletiler. Hata nedenini giderdikten sonra alarm detayından yeniden deneme başlatılabilir.</p>
         </div>
       </section>
     </div>

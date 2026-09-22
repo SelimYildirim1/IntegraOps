@@ -1,53 +1,20 @@
 """Local, real-service delay demo. Creates its own demo project; uses Python stdlib."""
 from datetime import datetime, timezone
+import argparse
 import json
 import os
 import time
-import urllib.error
-import urllib.request
 import uuid
 
 from verify_api import local_values
+from verification_client import VerificationClient, VerificationError
 
 
-def main():
-    values = local_values()
-    base = os.environ.get("INTEGRAOPS_API_URL", f"http://127.0.0.1:{values.get('API_PORT', '8080')}")
-    bootstrap_key = os.environ.get("BOOTSTRAP_KEY", values.get("BOOTSTRAP_KEY"))
-    if not bootstrap_key:
-        raise SystemExit("Mevcut .env dosyasında BOOTSTRAP_KEY bulunamadı. Anahtarları yeniden üretmeyin.")
+def run_checks(client):
+    def request(method, path, body=None, key=None, expected=200):
+        return client.request(method, path, body, project=key, expected=expected)
 
-    def request(method, path, body=None, key=None, bootstrap=False, expected=200):
-        headers = {"Content-Type": "application/json"}
-        if key:
-            headers["X-API-Key"] = key
-        if bootstrap:
-            headers["X-Bootstrap-Key"] = bootstrap_key
-        req = urllib.request.Request(base + path, method=method, headers=headers,
-            data=None if body is None else json.dumps(body).encode())
-        try:
-            with urllib.request.urlopen(req, timeout=15) as response:
-                status, data = response.status, response.read()
-        except urllib.error.HTTPError as error:
-            status, data = error.code, error.read()
-        if status != expected:
-            raise RuntimeError(f"{method} {path}: HTTP {expected} bekleniyordu, {status} geldi.")
-        return json.loads(data) if data else None
-
-    ready_until = time.monotonic() + 60
-    while True:
-        try:
-            request("GET", "/health/ready")
-            break
-        except (OSError, RuntimeError):
-            if time.monotonic() >= ready_until:
-                raise SystemExit("API hazır değil. docker compose logs --tail=50 api migrate ile kontrol edin.")
-            time.sleep(1)
-
-    project = request("POST", "/api/v1/bootstrap/projects", {
-        "organizationName": "Gecikme modülü denemesi", "projectName": "Ayrı demo projesi"
-    }, bootstrap=True, expected=201)
-    key = project["apiKey"]
+    key = client.provision("Gecikme doğrulama", "Gecikme modülü denemesi")
     request("POST", "/api/v1/flows", {
         "code": "delay-demo", "name": "ERP → Onay → Fatura → Kargo",
         "steps": [
@@ -119,6 +86,19 @@ def main():
     assert completed["status"] == "completed"
     show("6. Bütün adımlar tamamlandı; bekleyen adım kalmadı.", completed)
     print("Başarılı: periyodik tarama, adım bazlı süre, tekrar gönderim, geç bildirim ve hata ayrımı.")
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--session", action="store_true", help="Kurulu V1 hesabıyla giriş yapıp ayrı test projesi oluştur")
+    args = parser.parse_args()
+    values = local_values()
+    base = os.environ.get("INTEGRAOPS_API_URL", f"http://127.0.0.1:{values.get('API_PORT', '8080')}")
+    try:
+        with VerificationClient(base, values, args.session) as client:
+            run_checks(client)
+    except (VerificationError, OSError) as error:
+        raise SystemExit(str(error)) from None
 
 
 if __name__ == "__main__":
