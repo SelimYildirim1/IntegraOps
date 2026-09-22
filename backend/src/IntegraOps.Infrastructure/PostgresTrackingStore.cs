@@ -35,7 +35,7 @@ public sealed class PostgresTrackingStore(NpgsqlDataSource dataSource) : ITracki
         if (rawKey.Length is < 32 or > 128) return null;
         await using var command = dataSource.CreateCommand("""
             SELECT p.organization_id, p.id FROM api_keys k JOIN projects p ON p.id = k.project_id
-            WHERE k.key_hash = @hash AND k.revoked_at IS NULL
+            WHERE k.key_hash = @hash AND k.revoked_at IS NULL AND (k.expires_at IS NULL OR k.expires_at > clock_timestamp())
             """);
         command.Parameters.AddWithValue("hash", Hash(rawKey));
         await using var reader = await command.ExecuteReaderAsync(ct);

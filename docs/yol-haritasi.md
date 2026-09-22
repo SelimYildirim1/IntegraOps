@@ -2,7 +2,7 @@
 
 Bu belge projenin V1 kapanışından kurumsal ürüne kadar olan geliştirme planını ve her aşamanın güncel durumunu tutar. Aşamalar sırayla uygulanır. Bir aşama ancak kendi bitiş ölçütü karşılandığında tamamlanmış sayılır.
 
-**Son güncelleme:** 22 Eylül 2026 (V2 karmaşık süreçler tamamlandı)
+**Son güncelleme:** 22 Eylül 2026 (tekrar kullanılabilir entegrasyonlar tamamlandı)
 
 ## Durum işaretleri
 
@@ -16,7 +16,7 @@ Bu belge projenin V1 kapanışından kurumsal ürüne kadar olan geliştirme pla
 
 ## Şu an neredeyiz
 
-**Aktif aşama:** Entegrasyonların tekrar kullanılabilir hale gelmesi (Aşama 12). Aşama 2, 3 ve 5 dış girdi bekliyor; V1.1, V1.2 ve V2'nin üç paketi tamamlandı.
+**Aktif aşama:** Kurumsal kullanım ve ticari ürün (Aşama 13). Aşama 2, 3 ve 5 dış girdi bekliyor; V1.1, V1.2, V2 ve entegrasyon paketi tamamlandı.
 
 Aşama 1 tamamlandı. Aşama 3 ve 4'ün yerelde sınanabilen bütün kısımları tamamlandı; kalan görevler gerçek sunucu, alan adı ve SMTP bilgisine bağlı. Bu girdiler gelene kadar Aşama 2, 3 ve 5 için kullanıcı kararı gerekiyor:
 
@@ -317,23 +317,25 @@ Doğrusal akışların ötesine geçmek ayrı bir iş kuralı geliştirmesidir.
 
 ---
 
-## 12. V2–V3 — Entegrasyonların tekrar kullanılabilir hale gelmesi ⏳
+## 12. V2–V3 — Entegrasyonların tekrar kullanılabilir hale gelmesi ✅
 
 İlk birkaç gerçek entegrasyondan öğrenilenler ürünleştirilir.
 
 | Görev | Durum |
 |---|---|
-| Tekrar kullanılabilir gönderici kütüphaneleri | ⏳ |
-| Kaynak bağlantısı kurulum ekranları | ⏳ |
-| Bağlantı testi ve son başarılı veri alışverişi bilgisi | ⏳ |
-| Hazır olay eşleme şablonları | ⏳ |
-| Kaynağa özel kimlik doğrulama ve anahtar yenileme | ⏳ |
-| Bağlantı sürümlerinin ve uyumluluğunun izlenmesi | ⏳ |
-| İhtiyaç duyulan ERP ve e-ticaret sistemleri için hazır bağlayıcılar | ⏳ |
+| Tekrar kullanılabilir gönderici kütüphaneleri | ✅ `sdk/python`, `sdk/typescript`; Go ajanı |
+| Kaynak bağlantısı kurulum ekranları | ✅ Bağlantılar sekmesi, bağlantıya bağlı anahtarlar |
+| Bağlantı testi ve son başarılı veri alışverişi bilgisi | ✅ Ping, son olay, son hata, red sayısı, şablon kuru çalıştırma |
+| Hazır olay eşleme şablonları | ✅ 3 katalog şablonu, sunucu tarafı eşlemeli alım |
+| Kaynağa özel kimlik doğrulama ve anahtar yenileme | ✅ Bağlantıya bağlı anahtar, geçiş süreli yenileme |
+| Bağlantı sürümlerinin ve uyumluluğunun izlenmesi | ✅ User-Agent ve ajan sürümü, uyumluluk işareti |
+| İhtiyaç duyulan ERP ve e-ticaret sistemleri için hazır bağlayıcılar | ⛔ Gerçek müşteri ihtiyacı belirleyecek; şablon ve kütüphane zemini hazır |
 
 **Teknoloji:** Go ajanı, .NET entegrasyon bileşenleri ve gerektiğinde TypeScript/Python istemci kütüphaneleri. Hangi ERP bağlayıcısının önce geleceğini gerçek müşteri ihtiyacı belirler.
 
 **Bitiş ölçütü:** İkinci müşteri aynı kaynak sistemi bağlamak için ilk entegrasyonun tamamını yeniden yazmaz.
+
+**Doğrulama:** `scripts/verify_connections.py` 32 kontrol, SDK ve eşleme birim testleri. Ayrıntı `docs/baglantilar.md`.
 
 ---
 
@@ -408,3 +410,4 @@ Yeterli geçmiş veri oluşursa Python üzerinden anomali tespiti, olası neden 
 | 22 Eylül 2026 | Aşama 9 | Python mutabakat servisi, sözleşme uçları (migration 007), 18 kontrol geçti. **Aşama 9 tamamlandı** |
 | 22 Eylül 2026 | Aşama 10 | Rapor göstergeleri, eğilim, özet e-postaları (migration 008), 24 kontrol geçti. **Aşama 10 tamamlandı** |
 | 22 Eylül 2026 | Aşama 11 | Paralel/koşullu/isteğe bağlı adımlar, atlama ve iptal (migration 009), 24 kontrol geçti. **Aşama 11 tamamlandı** |
+| 22 Eylül 2026 | Aşama 12 | Bağlantılar, eşleme şablonları, anahtar yenileme, Python/Node SDK (migration 010), 32 kontrol geçti. **Aşama 12 tamamlandı** |

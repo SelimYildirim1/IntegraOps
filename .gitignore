@@ -16,3 +16,5 @@ backups/
 .env.live
 .playwright-cli/
 reconciler/.venv/
+sdk/typescript/node_modules/
+sdk/typescript/dist/

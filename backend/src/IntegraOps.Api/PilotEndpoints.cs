@@ -1,3 +1,4 @@
+using System.Text.Json;
 using IntegraOps.Application;
 using IntegraOps.Infrastructure;
 
@@ -35,7 +36,9 @@ public static class PilotEndpoints
             var write = HttpMethods.IsPost(c.Request.Method);
             var path = c.Request.Path.Value;
             // Ingest keys may read their own reconciliation history to resume from the last window.
+            var mappedIngest = write && path is not null && path.StartsWith("/api/v1/connections/") && path.EndsWith("/ingest") && actor.Scope is "legacy" or "ingest";
             var allowed = (HttpMethods.IsGet(c.Request.Method) && (actor.Scope is "legacy" or "read" || path == "/api/v1/reconciliation/runs"))
+                || mappedIngest || (write && path == "/api/v1/connections/ping")
                 || (write && path is "/api/v1/events" or "/api/v1/agents/heartbeat" or "/api/v1/reconciliation/runs" or "/api/v1/reports/digest" && actor.Scope is "legacy" or "ingest")
                 || (write && path == "/api/v1/reconciliation/lookup" && actor.Scope is "legacy" or "read" or "ingest")
                 || (write && path == "/api/v1/flows" && actor.Scope == "legacy");
@@ -133,6 +136,34 @@ public static class PilotEndpoints
         MapVersions(projectApi);
         MapReconciliation(projectApi);
         MapReports(projectApi);
+        MapConnections(projectApi);
+    }
+
+    /// <summary>V2–V3: connections, mapping templates, key rotation, client pings.</summary>
+    private static void MapConnections(RouteGroupBuilder projectApi)
+    {
+        projectApi.MapGet("/connections", async (HttpContext c, PostgresConnectionStore s, CancellationToken ct)
+            => Results.Ok(await s.List(Actor(c).ProjectId, ct))).WithMetadata(new ProjectRule());
+        projectApi.MapGet("/connections/catalog", (PostgresConnectionStore s) => Results.Ok(s.Catalog())).WithMetadata(new ProjectRule());
+        projectApi.MapPost("/connections", async (HttpContext c, ConnectionInput input, PostgresConnectionStore s, CancellationToken ct)
+            => Results.Json(await s.Save(Actor(c), null, input, ct), statusCode: 201)).WithMetadata(new ProjectRule("owner"));
+        projectApi.MapPut("/connections/{id:guid}", async (HttpContext c, Guid id, ConnectionInput input, PostgresConnectionStore s, CancellationToken ct)
+            => Results.Ok(await s.Save(Actor(c), id, input, ct))).WithMetadata(new ProjectRule("owner"));
+        projectApi.MapDelete("/connections/{id:guid}", async (HttpContext c, Guid id, PostgresConnectionStore s, CancellationToken ct) =>
+        { await s.Delete(Actor(c), id, ct); return Results.NoContent(); }).WithMetadata(new ProjectRule("owner"));
+        projectApi.MapPost("/connections/test", (MappingTestInput input, PostgresConnectionStore s) => Results.Ok(s.TestMapping(input))).WithMetadata(new ProjectRule("owner,operator"));
+        // Sources with an ingest key post raw payloads here; the connection's template turns them into events.
+        projectApi.MapPost("/connections/{id:guid}/ingest", async (HttpContext c, Guid id, JsonElement payload, PostgresConnectionStore s, CancellationToken ct) =>
+        {
+            var result = await s.Ingest(Actor(c), id, payload, ct);
+            await s.RecordUsage(Actor(c), c.Request.Headers.UserAgent, true, null, ct);
+            return Results.Json(result, statusCode: 202);
+        }).WithMetadata(new ProjectRule("owner,operator", SessionOnly: false));
+        projectApi.MapPost("/connections/ping", async (HttpContext c, PostgresConnectionStore s, CancellationToken ct) =>
+        { await s.Ping(Actor(c), c.Request.Headers.UserAgent, ct); return Results.Ok(new { ok = true, serverTime = DateTimeOffset.UtcNow }); })
+            .WithMetadata(new ProjectRule("owner,operator,viewer", SessionOnly: false));
+        projectApi.MapPost("/keys/{id:guid}/rotate", async (HttpContext c, Guid id, RotateInput input, PostgresConnectionStore s, CancellationToken ct)
+            => Results.Json(await s.Rotate(Actor(c), id, input, ct), statusCode: 201)).WithMetadata(new ProjectRule("owner"));
     }
 
     /// <summary>V2 analytics: overview, trends, digest settings and on-demand digest.</summary>

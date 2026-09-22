@@ -26,6 +26,7 @@ IntegraOps, farklı sistemlerden gelen iş olaylarını aynı işlem altında bi
 - Python mutabakat servisi (`reconciler/`): kaynak işlemlerini IntegraOps ile karşılaştırır, hiç bildirilmemiş işlemleri ve eksik adımları bulur.
 - Raporlar: adım süreleri ve yüzdelikler, süre uyumu, alarm yanıt süreleri, tekrarlayan sorunlar, veri kalitesi, eğilim grafikleri, günlük/haftalık özet e-postası.
 - Karmaşık süreçler: paralel aşamalar, isteğe bağlı ve gruba bağlı koşullu adımlar, `skipped` ve `cancelled` bildirimleri.
+- Bağlantılar: kaynak sistem kayıtları, sunucu tarafı eşleme şablonları, anahtar yenileme, istemci sürüm takibi, Python ve Node gönderici kütüphaneleri (`sdk/`).
 
 ## Gerekenler
 
@@ -129,6 +130,7 @@ python3 scripts/verify_agent.py     # Go 1.25 gerektirir; yerel API'yi kısa sü
 python3 scripts/verify_reconciler.py # reconciler/.venv (pg8000) gerektirir
 python3 scripts/verify_reports.py
 python3 scripts/verify_v2_flows.py
+python3 scripts/verify_connections.py # Node 20+ ve sdk/typescript derlemesi gerekir
 ```
 
 Kesinti provası için ayrı, uygun yerel test zamanında:
@@ -221,6 +223,7 @@ Gerçek kaynak sistemin bağlanması için sözleşme `docs/entegrasyon-sozlesme
 - `docs/mutabakat.md`: Python mutabakat servisinin sorgu sözleşmesi, ayarları ve doğrulaması.
 - `docs/raporlar.md`: Rapor göstergeleri, özet e-postaları ve doğrulaması.
 - `docs/v2-akislar.md`: Paralel, koşullu ve isteğe bağlı adımlar, atlama ve iptal kuralları.
+- `docs/baglantilar.md`: Bağlantılar, eşleme şablonları, SDK'lar ve anahtar yenileme.
 - `docs/entegrasyon-sozlesmesi.md`: Gerçek kaynak sistem için olay, kimlik ve kuyruk kuralları.
 - `docs/izleme.md` ve `docs/canli-ortam.md`: Sistem sağlığı izleme ve canlı işletim rehberleri.
 - `IntegraOps_V1_00_Kurulum_ve_Test.md`: V1 modüllerinin ayrıntılı kurulum açıklaması.

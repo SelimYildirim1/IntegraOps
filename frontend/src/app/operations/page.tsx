@@ -19,6 +19,7 @@ const actionNames: Record<string, string> = {
   "flow.publish": "Akış sürümü yayınlandı", "flow.rename": "Akış adı değiştirildi",
   "calendar.create": "Takvim oluşturuldu", "calendar.update": "Takvim güncellendi", "calendar.delete": "Takvim silindi",
   "reconciliation.run": "Mutabakat koşusu kaydedildi", "digest.settings": "Özet ayarları güncellendi", "digest.send": "Rapor özeti gönderildi",
+  "connection.create": "Bağlantı oluşturuldu", "connection.update": "Bağlantı güncellendi", "connection.delete": "Bağlantı silindi", "key.rotate": "Anahtar yenilendi",
 };
 
 export default async function OperationsPage() {

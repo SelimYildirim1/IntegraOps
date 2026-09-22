@@ -58,6 +58,13 @@ jobs:
           python3 scripts/verify_reconciler.py
           python3 scripts/verify_reports.py
           python3 scripts/verify_v2_flows.py
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Verify connections and SDKs
+        run: |
+          (cd sdk/typescript && npm ci && npm run build)
+          python3 scripts/verify_connections.py
       - name: Start monitoring stack
         run: docker compose -f docker-compose.yml -f compose.monitoring.yml up -d
       - name: Verify monitoring
@@ -113,3 +120,15 @@ jobs:
           python-version: '3.13'
       - run: python -m unittest discover -s tests -v
         working-directory: reconciler
+
+  sdk:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: npm ci && npm run build && npm test
+        working-directory: sdk/typescript
+      - run: python3 -m unittest test_integraops_sender -v
+        working-directory: sdk/python
