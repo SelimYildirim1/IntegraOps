@@ -1,0 +1,28 @@
+# IntegraOps transfer agent. Copy to agent.conf (chmod 600). AGENT_* environment variables override these values.
+
+# Reported to IntegraOps; unique within the project.
+NAME=erp-agent
+
+# IntegraOps API and an ingest ("Bildirim gönderir") key of the project.
+API_URL=https://api.example.com
+API_KEY=io_v1_replace_me
+
+# Source: "postgres" reads an outbox table written in the customer system's own transactions;
+# "directory" reads one JSON event per file from <DIRECTORY>/pending.
+SOURCE=postgres
+POSTGRES_DSN=postgres://outbox_reader:secret@erp-db.internal:5432/erp?sslmode=require
+TABLE=integraops.outbox
+# DIRECTORY=/var/lib/integraops-agent/events
+# KEEP_SENT=false
+
+# Delivery behaviour
+BATCH=50
+CONCURRENCY=4
+RATE_PER_SEC=50
+LEASE=60s
+POLL=1s
+TIMEOUT=15s
+
+# Local status endpoint (/status, /metrics, /health) and heartbeat interval to IntegraOps.
+LISTEN=127.0.0.1:9464
+HEARTBEAT=30s

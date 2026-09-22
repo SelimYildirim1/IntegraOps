@@ -24,6 +24,8 @@ public sealed record SavedViewInput(string Kind, string Name, string Query);
 public sealed record InviteInput(string Email, string Name, string Role);
 public sealed record ResetRequestInput(string Email);
 public sealed record TokenPasswordInput(string Password);
+public sealed record AgentHeartbeatInput(string? Name, string? Version, string? Host, string? SourceKind, int? Pending,
+    long? SentTotal, long? DeadTotal, long? RetryTotal, string? LastError, string? LastSuccessAt, System.Text.Json.JsonElement? Config);
 public sealed record RetentionInput(int? FinishedTransactionDays, int? NotificationDays, int? AuditDays);
 public sealed record SessionUser(Guid Id, string Email, string Name);
 public sealed record ProjectIdentity(Guid ProjectId, Guid OrganizationId, Guid? UserId, string Role, string? Scope);
