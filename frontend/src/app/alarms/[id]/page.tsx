@@ -1,6 +1,6 @@
 import Link from "next/link";
-import { api, apiMessage, getAccess } from "@/lib/api";
-import type { AlarmDetail } from "@/lib/pilot-types";
+import { api, apiMessage, getAccess, getAssignable } from "@/lib/api";
+import type { AlarmDetail, Assignee } from "@/lib/pilot-types";
 import { eventNames, deliveryNames } from "@/lib/pilot-types";
 import { alarmKind, alarmState } from "@/lib/alarms";
 import { Message, PageHead, Time } from "@/components/ui";
@@ -13,10 +13,12 @@ export const dynamic = "force-dynamic";
 const deliveryTone: Record<string, string> = { sent: "good", dead: "bad", sending: "info", pending: "info", cancelled: "" };
 
 export default async function AlarmDetailPage({ params }: { params: Promise<{ id: string }> }) {
-  const { id } = await params; let result: AlarmDetail; let canAct = false;
+  const { id } = await params; let result: AlarmDetail; let canAct = false; let assignees: Assignee[] = []; let me = "";
   if (!/^[0-9a-f-]{36}$/i.test(id)) return <Message title="Alarm bulunamadı" description="Bağlantıyı kontrol edin." href="/alarms" action="Alarmlara dön" />;
-  try { const access = await getAccess(); canAct = access.role !== "viewer"; result = await api<AlarmDetail>(`/alarms/${id}`); }
-  catch (e) { return <Message title="Alarm yüklenemedi" description={apiMessage(e)} href="/alarms" action="Alarmlara dön" />; }
+  try {
+    const access = await getAccess(); canAct = access.role !== "viewer"; me = access.userId;
+    [result, assignees] = await Promise.all([api<AlarmDetail>(`/alarms/${id}`), canAct ? getAssignable() : Promise.resolve([])]);
+  } catch (e) { return <Message title="Alarm yüklenemedi" description={apiMessage(e)} href="/alarms" action="Alarmlara dön" />; }
   const a = result.alarm;
   const s = alarmState(a);
   const transactionHref = `/transactions/${encodeURIComponent(a.flow)}/${encodeURIComponent(a.business_id)}`;
@@ -24,7 +26,7 @@ export default async function AlarmDetailPage({ params }: { params: Promise<{ id
   return <>
     <PageHead crumb={{ href: "/alarms", label: "Alarmlar" }}
       title={<>{alarmKind(a.kind)}: <span className="mono">{a.business_id}</span></>}
-      lede={<>{a.flow} akışında <span className="mono">{a.step_code}</span> adımı için açıldı.</>}>
+      lede={<>{a.flow} akışında <span className="mono">{a.step_code}</span> adımı için açıldı.{a.is_test && " Test verisi."}</>}>
       <span className={`badge ${s.tone}`}>{s.label}</span>
       {!a.acknowledged_at && !a.resolved_at && canAct && <ActionForm action={adminAction} label="Gördüm olarak işaretle" compact tone="secondary">
         <input type="hidden" name="op" value="ack" /><input type="hidden" name="id" value={id} /></ActionForm>}
@@ -41,12 +43,26 @@ export default async function AlarmDetailPage({ params }: { params: Promise<{ id
             <div><dt>Beklenen son zaman</dt><dd className="time">{a.deadline_at ? <Time value={a.deadline_at} /> : "—"}</dd></div>
             <div><dt>Görüldü</dt><dd className="time">{a.acknowledged_at ? <Time value={a.acknowledged_at} /> : "Henüz değil"}</dd></div>
             <div><dt>Kapanış</dt><dd className="time">{a.resolved_at ? <Time value={a.resolved_at} /> : "Açık"}</dd></div>
+            <div><dt>Sorumlu</dt><dd>{a.assigned_name ?? "Atanmadı"}{a.assigned_at && <> <span className="time">(<Time value={a.assigned_at} />)</span></>}</dd></div>
           </dl>
           {a.resolution && <p className="callout good">{a.resolution === "step_completed"
             ? "Eksik adımın tamamlandığı bildirildi; alarm bu bildirimle kapandı."
             : "İşlemin durumu değişti; bu gecikme koşulu artık geçerli değil."}</p>}
           {a.error && <div><p className="help" style={{ marginBottom: 6 }}>Kaynak sistemin bildirdiği hata</p><pre className="error-content">{a.error}</pre></div>}
-          <p className="help">Gördüm işareti alarmı kapatmaz; yalnızca bir kullanıcının alarmı fark ettiğini kaydeder. Kapanış, gelen bildirimlerle belirlenir.</p>
+          {canAct && <div className="assign-row">
+            {a.assigned_to !== me && <ActionForm action={adminAction} label="Üstlen" compact tone="secondary">
+              <input type="hidden" name="op" value="assign" /><input type="hidden" name="id" value={id} /><input type="hidden" name="userId" value="me" /></ActionForm>}
+            {a.assigned_to && <ActionForm action={adminAction} label="Sorumluyu kaldır" compact tone="quiet">
+              <input type="hidden" name="op" value="assign" /><input type="hidden" name="id" value={id} /><input type="hidden" name="userId" value="" /></ActionForm>}
+            <ActionForm action={adminAction} label="Ata" compact tone="secondary">
+              <input type="hidden" name="op" value="assign" /><input type="hidden" name="id" value={id} />
+              <select name="userId" aria-label="Sorumlu seç" defaultValue={a.assigned_to ?? ""} className="chip-input">
+                <option value="">Sorumlu seçin</option>
+                {assignees.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
+              </select>
+            </ActionForm>
+          </div>}
+          <p className="help">Gördüm işareti alarmı kapatmaz; yalnızca bir kullanıcının alarmı fark ettiğini kaydeder. Sorumlu, alarmı kimin takip ettiğini gösterir. Kapanış, gelen bildirimlerle belirlenir.</p>
         </div>
       </section>
 
@@ -58,6 +74,23 @@ export default async function AlarmDetailPage({ params }: { params: Promise<{ id
         </ol></div>
       </section>
     </div>
+
+    <section className="surface">
+      <div className="surface-head"><div><h2>Notlar</h2><p>İnceleme ve müdahale kayıtları. Notlar alarmla birlikte saklanır ve silinmez.</p></div>
+        <span className="count">{result.notes.length} not</span></div>
+      <div className="surface-body">
+        {result.notes.length === 0 && <p className="muted">Henüz not yok.</p>}
+        <ol className="notes">
+          {result.notes.map(n => <li key={n.id}><div className="note-head"><strong>{n.author}</strong><span className="time"><Time value={n.created_at} /></span></div>
+            <p>{n.body}</p></li>)}
+        </ol>
+        {canAct && <ActionForm action={adminAction} label="Not ekle" busy="Kaydediliyor…">
+          <input type="hidden" name="op" value="note" /><input type="hidden" name="id" value={id} />
+          <div className="field"><label htmlFor="note-body">Yeni not</label>
+            <textarea id="note-body" name="body" required maxLength={2000} rows={3} placeholder="Ne incelendi, kiminle görüşüldü, ne yapıldı?" /></div>
+        </ActionForm>}
+      </div>
+    </section>
 
     <section className="surface">
       <div className="surface-head"><div><h2>Bildirim gönderimleri</h2><p>Açılış ve kapanış, etkin kanallara ayrı ayrı gönderilir.</p></div></div>

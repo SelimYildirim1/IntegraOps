@@ -49,7 +49,7 @@ public static class PostgresAlarmStore
         var eventId = Guid.CreateVersion7();
         await Run(c, tx, "INSERT INTO alarm_events(id,alarm_id,kind,actor_id) VALUES(@e,@a,@k,CAST(@u AS uuid))", ct,
             ("e", eventId), ("a", alarm), ("k", kind), ("u", actor));
-        if (kind == "acknowledged") return;
+        if (kind is not ("opened" or "resolved")) return; // Only lifecycle changes notify channels.
         var data = (await Rows(c, tx, """
             SELECT a.id alarm_id,a.project_id,f.code flow,t.business_id transaction_id,a.kind alarm_kind,
                 a.step_code,a.error,a.deadline_at,a.opened_at,a.resolved_at,a.resolution

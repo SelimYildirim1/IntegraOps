@@ -49,6 +49,7 @@ services:
       ConnectionStrings__Postgres: "Host=postgres;Database=integraops;Username=integraops;Password=${POSTGRES_PASSWORD};Timeout=5;Command Timeout=15"
       Bootstrap__Key: ${BOOTSTRAP_KEY:?Required}
       Notifications__WebhookOrigins: ${WEBHOOK_ORIGINS:-}
+      Panel__BaseUrl: https://${PANEL_HOST}
     volumes: ["protection_keys:/var/lib/integraops/keys"]
     depends_on: { migrate: { condition: service_completed_successfully } }
   worker:

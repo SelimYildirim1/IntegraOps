@@ -30,9 +30,9 @@ public sealed class PostgresPanelQueries(NpgsqlDataSource dataSource) : IPanelQu
     }
 
     public async Task<TransactionSummary> GetSummaryAsync(
-        Guid projectId, string? flow, CancellationToken ct)
+        Guid projectId, string? flow, string? test, CancellationToken ct)
     {
-        var query = InputValidation.TransactionList(flow, null, null);
+        var query = InputValidation.TransactionList(flow, null, null, test: test);
         await using var connection = await dataSource.OpenConnectionAsync(ct);
         // Reuse the list's project scope and effective delay classification.
         // One aggregate query counts every matching transaction, with no pagination.
@@ -50,7 +50,7 @@ public sealed class PostgresPanelQueries(NpgsqlDataSource dataSource) : IPanelQu
             FROM filtered
             """,
             ("projectId", projectId), ("flow", query.Flow),
-            ("status", null), ("delay", null));
+            ("status", null), ("delay", null), ("search", null), ("from", null), ("to", null), ("test", query.Test));
 
         await using var reader = await command.ExecuteReaderAsync(ct);
         if (!await reader.ReadAsync(ct))

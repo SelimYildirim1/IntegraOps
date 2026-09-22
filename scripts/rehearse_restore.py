@@ -342,7 +342,7 @@ def restore(run, key_hashes):
     ensure(all(re.fullmatch(r"[a-z_]+", name) for name in tables), "Beklenmeyen tablo adı.")
     run.report["restored_table_counts"] = {name: int(run.sql(f'SELECT count(*) FROM "{name}";')) for name in tables}
     migrations = run.scalar("SELECT json_agg(version ORDER BY version) FROM schema_migrations;")
-    run.check("V1 migration kayıtları mevcut", migrations == [1, 2, 3])
+    run.check("V1 migration kayıtları mevcut", migrations is not None and migrations[:3] == [1, 2, 3])
     run.check("Kullanıcı, proje ve olay kayıtları mevcut", all(
         run.report["restored_table_counts"].get(t, 0) > 0 for t in ("app_users", "projects", "transaction_events")))
     # Save inventory before changing the CLONE. Never replay old outbound notifications.

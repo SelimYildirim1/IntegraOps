@@ -85,8 +85,8 @@ public sealed class PostgresTrackingStore(NpgsqlDataSource dataSource) : ITracki
 
         // The uniqueness constraint serializes simultaneous creation of the same business transaction.
         await using (var insert = Sql.Command(connection, transaction, """
-            INSERT INTO transactions (id, project_id, flow_id, business_id)
-            VALUES (@id, @projectId, @flowId, @businessId)
+            INSERT INTO transactions (id, project_id, flow_id, business_id, is_test)
+            VALUES (@id, @projectId, @flowId, @businessId, @businessId LIKE 'TEST-%')
             ON CONFLICT (project_id, flow_id, business_id) DO NOTHING
             """, ("id", Guid.CreateVersion7()), ("projectId", projectId),
             ("flowId", flow.Id), ("businessId", request.TransactionId)))

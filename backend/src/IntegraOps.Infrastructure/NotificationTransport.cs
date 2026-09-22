@@ -98,6 +98,19 @@ public sealed class NotificationTransport : IDisposable
                     (int)response.StatusCode is >= 300 and < 500 && (int)response.StatusCode is not (408 or 425 or 429));
             return;
         }
+        using var payload = JsonDocument.Parse(body);
+        var data = payload.RootElement;
+        string Field(string name) => data.TryGetProperty(name, out var value) && value.ValueKind != JsonValueKind.Null ? value.ToString() : "—";
+        var change = Field("event") == "opened" ? "Alarm açıldı" : "Alarm kapandı";
+        var reason = Field("alarm_kind") == "overdue" ? "Beklenen bildirim süresinde gelmedi" : "Kaynak sistem hata bildirdi";
+        var emailBody = $"{change}\n\n{reason}\nİşlem: {Field("transaction_id")}\nAkış: {Field("flow")}\nAdım: {Field("step_code")}\n"
+            + $"Beklenen son zaman: {Field("deadline_at")}\nAçıklama: {Field("error")}\n\nAlarm: {Field("alarm_id")}\nBildirim: {delivery}";
+        await SendMail(target, $"IntegraOps · {change} · {Field("transaction_id")}", emailBody, delivery, timeout.Token);
+    }
+
+    /// <summary>Plain-text e-mail through the configured SMTP relay; used for alarms and account messages.</summary>
+    public async Task SendMail(string to, string subject, string body, Guid messageId, CancellationToken ct)
+    {
         var host = configuration["Smtp:Host"] ?? throw new DeliveryException("smtp_not_configured", true);
         var from = configuration["Smtp:From"] ?? throw new DeliveryException("smtp_from_missing", true);
         using var smtp = new SmtpClient(host, configuration.GetValue("Smtp:Port", 587))
@@ -108,16 +121,9 @@ public sealed class NotificationTransport : IDisposable
         };
         if (!string.IsNullOrEmpty(configuration["Smtp:User"]))
             smtp.Credentials = new NetworkCredential(configuration["Smtp:User"], configuration["Smtp:Password"]);
-        using var payload = JsonDocument.Parse(body);
-        var data = payload.RootElement;
-        string Field(string name) => data.TryGetProperty(name, out var value) && value.ValueKind != JsonValueKind.Null ? value.ToString() : "—";
-        var change = Field("event") == "opened" ? "Alarm açıldı" : "Alarm kapandı";
-        var reason = Field("alarm_kind") == "overdue" ? "Beklenen bildirim süresinde gelmedi" : "Kaynak sistem hata bildirdi";
-        var emailBody = $"{change}\n\n{reason}\nİşlem: {Field("transaction_id")}\nAkış: {Field("flow")}\nAdım: {Field("step_code")}\n"
-            + $"Beklenen son zaman: {Field("deadline_at")}\nAçıklama: {Field("error")}\n\nAlarm: {Field("alarm_id")}\nBildirim: {delivery}";
-        using var message = new MailMessage(from, target, $"IntegraOps · {change} · {Field("transaction_id")}", emailBody) { IsBodyHtml = false };
-        message.Headers.Add("Message-ID", $"<{delivery}@integraops.local>");
-        await smtp.SendMailAsync(message, timeout.Token);
+        using var message = new MailMessage(from, to, subject, body) { IsBodyHtml = false };
+        message.Headers.Add("Message-ID", $"<{messageId}@integraops.local>");
+        await smtp.SendMailAsync(message, ct);
     }
 
     public void Dispose() => client.Dispose();

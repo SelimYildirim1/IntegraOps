@@ -10,5 +10,6 @@
       <PrivateAssets>all</PrivateAssets>
     </PackageReference>
     <ProjectReference Include="../../src/IntegraOps.Application/IntegraOps.Application.csproj" />
+    <ProjectReference Include="../../src/IntegraOps.Infrastructure/IntegraOps.Infrastructure.csproj" />
   </ItemGroup>
 </Project>

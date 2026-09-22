@@ -149,8 +149,17 @@ public sealed class PostgresIdentityStore(NpgsqlDataSource source)
     {
         await using var c = await source.OpenConnectionAsync(ct);
         return await Rows(c, null, """
-            SELECT u.id,u.email,u.name,m.role FROM project_members m JOIN app_users u ON u.id=m.user_id
+            SELECT u.id,u.email,u.name,m.role,u.activated_at IS NOT NULL AS activated FROM project_members m JOIN app_users u ON u.id=m.user_id
             WHERE m.project_id=@p ORDER BY u.email
+            """, ct, ("p", project));
+    }
+
+    public async Task<object> Assignable(Guid project, CancellationToken ct)
+    {
+        await using var c = await source.OpenConnectionAsync(ct);
+        return await Rows(c, null, """
+            SELECT u.id,u.name,m.role FROM project_members m JOIN app_users u ON u.id=m.user_id
+            WHERE m.project_id=@p AND m.role IN ('owner','operator') AND u.activated_at IS NOT NULL ORDER BY u.name
             """, ct, ("p", project));
     }
 

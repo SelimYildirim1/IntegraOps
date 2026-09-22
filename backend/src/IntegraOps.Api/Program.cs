@@ -29,7 +29,9 @@ var connectionString = builder.Configuration.GetConnectionString("Postgres")
     ?? throw new InvalidOperationException("ConnectionStrings__Postgres gerekli.");
 builder.Services.AddSingleton(_ => NpgsqlDataSource.Create(connectionString));
 builder.Services.AddSingleton<ITrackingStore, PostgresTrackingStore>();
-builder.Services.AddSingleton<ITransactionQueries, PostgresTransactionQueries>();
+builder.Services.AddSingleton<PostgresTransactionQueries>();
+builder.Services.AddSingleton<ITransactionQueries>(sp => sp.GetRequiredService<PostgresTransactionQueries>());
+builder.Services.AddSingleton<PostgresOperationsQueries>();
 builder.Services.AddSingleton<IPanelQueries, PostgresPanelQueries>();
 builder.Services.AddSingleton<IFlowQueries, PostgresFlowQueries>();
 builder.Services.AddSingleton<HealthMetricsCollector>();
@@ -85,7 +87,7 @@ app.MapGet("/health/live", () => Results.Ok(new { status = "alive" }));
 app.MapGet("/health/version", () => Results.Ok(new { version = IntegraOpsMetrics.Version, revision = IntegraOpsMetrics.Revision }));
 app.MapGet("/health/ready", async (NpgsqlDataSource dataSource, CancellationToken ct) =>
 {
-    await using var command = dataSource.CreateCommand("SELECT 1 FROM schema_migrations WHERE version = 3");
+    await using var command = dataSource.CreateCommand($"SELECT 1 FROM schema_migrations WHERE version = {DatabaseMigrator.Latest}");
     return await command.ExecuteScalarAsync(ct) is null
         ? Results.Problem(statusCode: 503, title: "Migration gerekli.")
         : Results.Ok(new { status = "ready" });
@@ -146,11 +148,15 @@ projectApi.MapGet("/transactions", async (
     string? delay,
     int? page,
     int? pageSize,
+    string? search,
+    string? from,
+    string? to,
+    string? test,
     CancellationToken ct) =>
 {
     var access = (ProjectAccess)context.Items[typeof(ProjectAccess)]!;
     var query = InputValidation.TransactionList(
-        flow, status, delay, page ?? 1, pageSize ?? 20);
+        flow, status, delay, page ?? 1, pageSize ?? 20, search, from, to, test);
     return Results.Ok(await queries.ListAsync(access.ProjectId, query, ct));
 });
 
@@ -162,10 +168,10 @@ projectApi.MapGet("/flows", async (
 });
 
 projectApi.MapGet("/transactions/summary", async (
-    HttpContext context, IPanelQueries queries, string? flow, CancellationToken ct) =>
+    HttpContext context, IPanelQueries queries, string? flow, string? test, CancellationToken ct) =>
 {
     var access = (ProjectAccess)context.Items[typeof(ProjectAccess)]!;
-    return Results.Ok(await queries.GetSummaryAsync(access.ProjectId, flow, ct));
+    return Results.Ok(await queries.GetSummaryAsync(access.ProjectId, flow, test, ct));
 });
 
 projectApi.MapGet("/flows/{flow}", async (

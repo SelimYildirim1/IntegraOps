@@ -45,8 +45,18 @@ export const number = (value: number) => new Intl.NumberFormat("tr-TR").format(v
 
 export function listHref(filters: Filters, changes: Partial<Filters> = {}) {
   const next = { ...filters, ...changes };
-  return `/?${new URLSearchParams({ ...next, page: String(next.page), pageSize: String(next.pageSize) })}`;
+  return `/?${filterQuery(next)}`;
 }
+// Query string without empty values, so saved views and links stay short.
+export function filterQuery(filters: Filters) {
+  const params = new URLSearchParams();
+  for (const [key, value] of Object.entries({ ...filters, page: String(filters.page), pageSize: String(filters.pageSize) }))
+    if (value !== "" && !(key === "page" && value === "1") && !(key === "pageSize" && value === "20") && !(key === "test" && value === "exclude"))
+      params.set(key, value);
+  return params.toString();
+}
+// Dates come from <input type="date">; the panel sends them as plain days (UTC midnight on the API side).
+export const dateInput = /^\d{4}-\d{2}-\d{2}$/;
 
 export function Message({ title, description, href = "/", action = "İşlem listesine dön" }: {
   title: string; description: string; href?: string; action?: string;

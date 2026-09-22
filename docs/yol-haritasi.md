@@ -2,7 +2,7 @@
 
 Bu belge projenin V1 kapanışından kurumsal ürüne kadar olan geliştirme planını ve her aşamanın güncel durumunu tutar. Aşamalar sırayla uygulanır. Bir aşama ancak kendi bitiş ölçütü karşılandığında tamamlanmış sayılır.
 
-**Son güncelleme:** 22 Eylül 2026
+**Son güncelleme:** 22 Eylül 2026 (V1.1 tamamlandı)
 
 ## Durum işaretleri
 
@@ -16,7 +16,7 @@ Bu belge projenin V1 kapanışından kurumsal ürüne kadar olan geliştirme pla
 
 ## Şu an neredeyiz
 
-**Aktif aşama:** 2. İlk gerçek kaynak sisteminin bağlanması. Kod tarafında hazırlık tamamlandı; gerçek kaynak sistemin seçilmesi bekleniyor.
+**Aktif aşama:** V1.2 akış sürümleme (Aşama 7). Aşama 2, 3 ve 5 dış girdi bekliyor; V1.1 tamamlandı.
 
 Aşama 1 tamamlandı. Aşama 3 ve 4'ün yerelde sınanabilen bütün kısımları tamamlandı; kalan görevler gerçek sunucu, alan adı ve SMTP bilgisine bağlı. Bu girdiler gelene kadar Aşama 2, 3 ve 5 için kullanıcı kararı gerekiyor:
 
@@ -173,26 +173,28 @@ Go, Python analitiği ve ileri özellikler V1 kapanışından sonra ele alınır
 
 ---
 
-## 6. V1.1 — Günlük kullanım ve operasyon özellikleri ⏳
+## 6. V1.1 — Günlük kullanım ve operasyon özellikleri ✅
 
 V1'in ardından ilk ürün geliştirme paketi kullanıcıların günlük işini hızlandırır.
 
 | Özellik | Açıklama | Durum |
 |---|---|---|
-| İşlem arama | Sipariş veya işlem numarasıyla doğrudan bulma | ⏳ |
-| Tarih filtreleri | Belirli gün, saat ve dönemlerdeki kayıtları listeleme | ⏳ |
-| Kayıtlı filtreler | Sık kullanılan görünümleri saklama | ⏳ |
-| Test verilerinin ayrılması | Deneme işlemlerinin gerçek istatistikleri etkilememesi | ⏳ |
-| Alarm sorumlusu | Alarmın kim tarafından takip edildiğinin görünmesi | ⏳ |
-| Alarm notları | Yapılan inceleme ve müdahalenin kaydedilmesi | ⏳ |
-| E-posta daveti | Kullanıcının kendi hesabını tamamlayarak projeye katılması | ⏳ |
-| Parola sıfırlama | Hesap erişiminin güvenli şekilde geri alınması | ⏳ |
-| Veri saklama kuralları | Olay, bildirim ve denetim kayıtlarının saklama süreleri | ⏳ |
-| Dışa aktarım | Yetkiye uygun işlem ve alarm raporları | ⏳ |
+| İşlem arama | Sipariş veya işlem numarasıyla doğrudan bulma | ✅ `search` parametresi, büyük/küçük harf duyarsız |
+| Tarih filtreleri | Belirli gün, saat ve dönemlerdeki kayıtları listeleme | ✅ `from`/`to`; işlemde oluşturulma, alarmda açılış zamanı |
+| Kayıtlı filtreler | Sık kullanılan görünümleri saklama | ✅ Kullanıcıya özel, proje başına 50 görünüm |
+| Test verilerinin ayrılması | Deneme işlemlerinin gerçek istatistikleri etkilememesi | ✅ `TEST-` önekli işlemler varsayılan olarak hariç |
+| Alarm sorumlusu | Alarmın kim tarafından takip edildiğinin görünmesi | ✅ Üstlen, ata, kaldır; sahip veya operatör |
+| Alarm notları | Yapılan inceleme ve müdahalenin kaydedilmesi | ✅ Kalıcı, yazar ve zamanla |
+| E-posta daveti | Kullanıcının kendi hesabını tamamlayarak projeye katılması | ✅ 7 gün geçerli tek kullanımlık bağlantı |
+| Parola sıfırlama | Hesap erişiminin güvenli şekilde geri alınması | ✅ 1 saat geçerli bağlantı, adres varlığı sızmaz |
+| Veri saklama kuralları | Olay, bildirim ve denetim kayıtlarının saklama süreleri | ✅ Proje başına gün, worker günlük süpürür |
+| Dışa aktarım | Yetkiye uygun işlem ve alarm raporları | ✅ CSV, sahip ve operatör, denetim kaydıyla |
 
 **Teknoloji:** .NET API, PostgreSQL ve Next.js panel.
 
 **Bitiş ölçütü:** Operasyon ekibi işlemleri bulabilir, alarmları paylaşabilir ve inceleme geçmişini sistemde tutabilir.
+
+**Doğrulama:** `scripts/verify_v1_1.py` 48 kontrol, 59 birim testi, tarayıcı kontrolü. Ayrıntı `docs/v1-1.md`.
 
 ---
 
@@ -390,3 +392,4 @@ Yeterli geçmiş veri oluşursa Python üzerinden anomali tespiti, olası neden 
 | 22 Eylül 2026 | Aşama 4 | OpenTelemetry, Prometheus, Alertmanager, Grafana eklendi; 15 kontrol ve kesinti senaryosu geçti. **Aşama 4 tamamlandı** |
 | 22 Eylül 2026 | Aşama 3 | İmaj yayın hattı, canlı betikler ve yerel prova: 26 kontrol geçti. Gerçek sunucu bekleniyor |
 | 22 Eylül 2026 | Aşama 2 | Entegrasyon sözleşmesi yazıldı. Kaynak sistem seçimi bekleniyor |
+| 22 Eylül 2026 | V1.1 | Günlük kullanım özellikleri: migration 004, 48 kontrol geçti. **V1.1 tamamlandı** |

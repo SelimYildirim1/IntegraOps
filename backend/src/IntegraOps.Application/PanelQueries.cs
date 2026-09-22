@@ -14,5 +14,5 @@ public interface IPanelQueries
         Guid projectId, CancellationToken ct);
 
     Task<TransactionSummary> GetSummaryAsync(
-        Guid projectId, string? flow, CancellationToken ct);
+        Guid projectId, string? flow, string? test, CancellationToken ct);
 }

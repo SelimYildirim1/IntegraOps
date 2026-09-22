@@ -4,7 +4,7 @@ import { redirect, unstable_rethrow } from "next/navigation";
 import type { FlowDetails, TestEventPayload } from "./flow-details";
 import type { CreateFlowInput } from "./flow-form";
 import type { Filters, Flow, Summary, TransactionDetail, TransactionPage } from "./types";
-import type { Project, Access } from "./pilot-types";
+import type { Project, Access, Assignee, SavedView } from "./pilot-types";
 
 export class ApiError extends Error {
   constructor(public status: number, message: string) { super(message); }
@@ -58,10 +58,28 @@ export const getProjects = () => api<Project[]>("/me/projects", "GET", undefined
 export const getAccess = () => api<Access>("/access");
 export const getFlows = () => api<Flow[]>("/flows");
 export const getFlow = (flow: string) => api<FlowDetails>("/flows/" + encodeURIComponent(flow));
-export const getSummary = (flow: string) => api<Summary>(
-  "/transactions/summary" + (flow ? "?" + new URLSearchParams({ flow }) : ""));
+export const getSummary = (flow: string, test: string) => api<Summary>(
+  "/transactions/summary?" + new URLSearchParams({ flow, test }));
 export const getTransactions = (filters: Filters) => api<TransactionPage>(
   "/transactions?" + new URLSearchParams({ ...filters, page: String(filters.page), pageSize: String(filters.pageSize) }));
+export const getSavedViews = (kind: "transactions" | "alarms") => api<SavedView[]>("/views?" + new URLSearchParams({ kind }));
+export const getAssignable = () => api<Assignee[]>("/members/assignable");
+export const requestPasswordReset = (email: string) => raw<void>("/auth/password-reset", "POST", { email }, {});
+export const getTokenInfo = (token: string) => raw<{ kind: "invite" | "reset"; email: string; name: string }>(
+  "/auth/tokens/" + encodeURIComponent(token), "GET", undefined, {});
+export const completeToken = (kind: "invite" | "reset", token: string, password: string) => raw<void>(
+  (kind === "invite" ? "/auth/invitations/" : "/auth/password-reset/") + encodeURIComponent(token), "POST", { password }, {});
+
+// Session-scoped fetch that returns the raw response, for CSV downloads.
+export async function apiDownload(path: string): Promise<Response> {
+  const jar = await cookies(); const token = jar.get("io_session")?.value; const project = jar.get("io_project")?.value;
+  const base = process.env.INTEGRAOPS_API_URL;
+  if (!token || !project || !base) throw new ApiError(401, "Giriş yapmanız gerekli.");
+  return fetch(new URL("/api/v1" + path, base), {
+    headers: { Authorization: "Bearer " + token, "X-Project-Id": project },
+    cache: "no-store", redirect: "error", signal: AbortSignal.timeout(60000),
+  });
+}
 export const getTransaction = (flow: string, id: string) => api<TransactionDetail>(
   "/flows/" + encodeURIComponent(flow) + "/transactions/" + encodeURIComponent(id));
 export async function createFlow(input: CreateFlowInput): Promise<void> { await api("/flows", "POST", input); }

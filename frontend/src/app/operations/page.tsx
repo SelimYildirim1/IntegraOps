@@ -12,6 +12,9 @@ const actionNames: Record<string, string> = {
   "channel.create": "Kanal oluşturuldu", "channel.enable": "Kanal etkinleştirildi", "channel.disable": "Kanal kapatıldı",
   "alarm.acknowledge": "Alarm görüldü olarak işaretlendi", "delivery.retry": "Gönderim yeniden denendi",
   "project.create": "Proje oluşturuldu", "owner.bootstrap": "İlk proje sahibi kuruldu",
+  "member.invite": "Kullanıcı davet edildi", "alarm.assign": "Alarm sorumlusu atandı", "alarm.unassign": "Alarm sorumlusu kaldırıldı",
+  "alarm.note": "Alarma not eklendi", "retention.update": "Saklama kuralları güncellendi",
+  "export.transactions": "İşlem listesi dışa aktarıldı", "export.alarms": "Alarm listesi dışa aktarıldı",
 };
 
 export default async function OperationsPage() {
