@@ -2,7 +2,7 @@
 
 Bu belge projenin V1 kapanışından kurumsal ürüne kadar olan geliştirme planını ve her aşamanın güncel durumunu tutar. Aşamalar sırayla uygulanır. Bir aşama ancak kendi bitiş ölçütü karşılandığında tamamlanmış sayılır.
 
-**Son güncelleme:** 22 Eylül 2026 (Go aktarım ajanı tamamlandı)
+**Son güncelleme:** 22 Eylül 2026 (V2 mutabakat servisi tamamlandı)
 
 ## Durum işaretleri
 
@@ -16,7 +16,7 @@ Bu belge projenin V1 kapanışından kurumsal ürüne kadar olan geliştirme pla
 
 ## Şu an neredeyiz
 
-**Aktif aşama:** V2 Python mutabakat servisi (Aşama 9). Aşama 2, 3 ve 5 dış girdi bekliyor; V1.1, V1.2 ve Go ajanı tamamlandı.
+**Aktif aşama:** V2 süre analizi ve raporlama (Aşama 10). Aşama 2, 3 ve 5 dış girdi bekliyor; V1.1, V1.2, Go ajanı ve mutabakat tamamlandı.
 
 Aşama 1 tamamlandı. Aşama 3 ve 4'ün yerelde sınanabilen bütün kısımları tamamlandı; kalan görevler gerçek sunucu, alan adı ve SMTP bilgisine bağlı. Bu girdiler gelene kadar Aşama 2, 3 ve 5 için kullanıcı kararı gerekiyor:
 
@@ -246,7 +246,7 @@ Go'nun ilk görevi müşteri sisteminin yanında çalışan olay aktarım ajanı
 
 ---
 
-## 9. V2 — Python ile kaynak-hedef mutabakatı ⏳
+## 9. V2 — Python ile kaynak-hedef mutabakatı ✅
 
 Python'ın ilk bağımsız ürün bileşeni mutabakat servisidir. Bugün Python test ve kurulum araçlarında kullanılıyor. Bu aşamada düzenli çalışan bir ürün görevi üstlenir.
 
@@ -254,16 +254,18 @@ Python'ın ilk bağımsız ürün bileşeni mutabakat servisidir. Bugün Python 
 
 | Görev | Durum |
 |---|---|
-| Kaynaktaki işlemlerle IntegraOps kayıtlarının dönemsel karşılaştırılması | ⏳ |
-| Hiç bildirilmemiş işlemlerin bulunması | ⏳ |
-| Eksik adım ve durum uyuşmazlıklarının belirlenmesi | ⏳ |
-| Karşılaştırılan zaman aralığının ve son başarılı çalışmanın kaydı | ⏳ |
-| Geç gelen veriler için bekleme payı | ⏳ |
-| Aynı uyuşmazlığın tekrar tekrar alarm üretmemesi | ⏳ |
+| Kaynaktaki işlemlerle IntegraOps kayıtlarının dönemsel karşılaştırılması | ✅ `reconciler/`, SQL ya da JSON kaynağı, `--loop` |
+| Hiç bildirilmemiş işlemlerin bulunması | ✅ `missing_transaction` |
+| Eksik adım ve durum uyuşmazlıklarının belirlenmesi | ✅ `missing_step`, `status_mismatch` |
+| Karşılaştırılan zaman aralığının ve son başarılı çalışmanın kaydı | ✅ `reconciliation_runs`, panel Mutabakat sekmesi |
+| Geç gelen veriler için bekleme payı | ✅ `GRACE`; kayıt ve adım düzeyinde |
+| Aynı uyuşmazlığın tekrar tekrar alarm üretmemesi | ✅ Tekilleştirme; yalnızca yeni uyuşmazlık e-posta ile bildirilir |
 
 **Teknoloji:** Ayrı Python worker. Kaynağın API'si veya yetkili okuma bağlantısı. Sonuçlar için tanımlanmış IntegraOps servis sözleşmesi. HTTP yönetim uçları gerekirse FastAPI değerlendirilir. İlk sürüm yalnızca zamanlanmış worker olarak çalışabilir.
 
 **Bitiş ölçütü:** Kontrollü olarak bildirimi eksik bırakılan işlem bulunur. Geç gelen normal veri gereksiz uyuşmazlık oluşturmaz.
+
+**Doğrulama:** `scripts/verify_reconciler.py` 18 kontrol, 7 Python birim testi. Ayrıntı `docs/mutabakat.md`.
 
 ---
 
@@ -381,7 +383,7 @@ Yeterli geçmiş veri oluşursa Python üzerinden anomali tespiti, olası neden 
 | Docker Compose / Caddy | İlk canlı dağıtım ve HTTPS | V1 canlı kabulü |
 | OpenTelemetry / Prometheus / Grafana | Teknik sağlık, ölçüm ve operasyon panoları | Canlı pilot hazırlığı |
 | Go | Kaynak tarafında tekrar kullanılabilir aktarım ajanı | Mevcut: `agent/` dizini |
-| Python | Mutabakat ve dönemsel analiz servisi | V2; yardımcı betikler zaten mevcut |
+| Python | Mutabakat ve dönemsel analiz servisi | Mevcut: `reconciler/`; yardımcı betikler |
 | SQLite | Gerekirse Go ajanının yerel kalıcı tamponu | Ajan tasarımında ihtiyaç olursa |
 | Redis / Kubernetes | Önbellek veya büyük dağıtımın yönetimi | Ölçülen ihtiyaç oluşursa |
 
@@ -399,3 +401,4 @@ Yeterli geçmiş veri oluşursa Python üzerinden anomali tespiti, olası neden 
 | 22 Eylül 2026 | V1.1 | Günlük kullanım özellikleri: migration 004, 48 kontrol geçti. **V1.1 tamamlandı** |
 | 22 Eylül 2026 | V1.2 | Akış sürümleme, takvim, grup süreleri, ihlal raporu: migration 005, 34 kontrol geçti. **V1.2 tamamlandı** |
 | 22 Eylül 2026 | Aşama 8 | Go aktarım ajanı, yaşam sinyali (migration 006), 21 kontrol geçti. **Aşama 8 tamamlandı** |
+| 22 Eylül 2026 | Aşama 9 | Python mutabakat servisi, sözleşme uçları (migration 007), 18 kontrol geçti. **Aşama 9 tamamlandı** |

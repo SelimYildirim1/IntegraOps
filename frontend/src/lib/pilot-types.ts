@@ -19,6 +19,17 @@ export type AgentInfo = {
   name: string; version: string; host: string; source_kind: string; pending: number; sent_total: number; dead_total: number; retry_total: number;
   last_error: string | null; last_success_at: string | null; config: Record<string, unknown>; first_seen_at: string; seen_at: string; stale: boolean;
 };
+export type ReconciliationRuns = {
+  items: { id: string; name: string; flow: string; window_from: string; window_to: string; grace_seconds: number; source_count: number;
+    matched_count: number; new_count: number; repeated_count: number; resolved_count: number; version: string; created_at: string }[];
+  page: number; pageSize: number;
+  lastRuns: { name: string; flow: string; window_to: string; created_at: string }[];
+};
+export type ReconciliationDiscrepancies = {
+  items: { id: string; flow: string; transaction_id: string; kind: string; step_code: string; detail: string; source_occurred_at: string | null;
+    first_seen_at: string; last_seen_at: string; resolved_at: string | null; seen_count: number; known: boolean }[];
+  total: number; page: number; pageSize: number; counts: { open: number; missing_transactions: number };
+};
 export type RetentionInfo = {
   policy: { finished_transaction_days: number | null; notification_days: number | null; audit_days: number | null; updated_at: string | null };
   runs: { ran_at: string; transactions_deleted: number; deliveries_deleted: number; audit_deleted: number }[];

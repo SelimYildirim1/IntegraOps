@@ -8,7 +8,7 @@ export default function PanelToolbar({ openAlarms }: { openAlarms: number | null
   const pathname = usePathname();
   if (pathname === "/login") return null;
   const tabs: [string, string][] = [
-    ["/", "İşlemler"], ["/flows", "Akışlar"], ["/alarms", "Alarmlar"], ["/reports", "Raporlar"], ["/settings", "Ayarlar"], ["/operations", "Sistem"],
+    ["/", "İşlemler"], ["/flows", "Akışlar"], ["/alarms", "Alarmlar"], ["/reports", "Raporlar"], ["/reconciliation", "Mutabakat"], ["/settings", "Ayarlar"], ["/operations", "Sistem"],
   ];
   return <nav className="appnav" aria-label="Ana menü">
     {tabs.map(([href, label]) => {

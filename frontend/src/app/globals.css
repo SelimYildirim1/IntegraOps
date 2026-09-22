@@ -396,3 +396,7 @@ th.right, td.right { text-align: right; }
 .calendar-card summary { color: var(--ink); }
 .flow-editor .form-actions .field { min-width: 220px; }
 td.late { color: var(--bad); }
+
+/* V2: mutabakat */
+.stat .time-stat { font-size: 15px; font-weight: 500; }
+.stat .hint { display: block; margin-top: 4px; }

@@ -42,6 +42,10 @@ jobs:
             context: .
             file: deploy/docker/Dockerfile.agent
             target: ""
+          - name: reconciler
+            context: .
+            file: deploy/docker/Dockerfile.reconciler
+            target: ""
     steps:
       - uses: actions/checkout@v4
         with:
