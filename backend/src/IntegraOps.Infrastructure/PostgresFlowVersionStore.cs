@@ -8,7 +8,8 @@ using static IntegraOps.Infrastructure.PilotSecurity;
 
 namespace IntegraOps.Infrastructure;
 
-public sealed record VersionStepInput(string? Code, string? Name, int? MaxDelaySeconds, Dictionary<string, int>? Overrides);
+public sealed record VersionStepInput(string? Code, string? Name, int? MaxDelaySeconds, Dictionary<string, int>? Overrides,
+    int? Stage = null, string? Kind = null, List<string>? Groups = null);
 public sealed record VersionInput(string? Name, List<VersionStepInput>? Steps, Guid? CalendarId, string? Note);
 public sealed record PublishInput(string? EffectiveFrom);
 public sealed record FlowNameInput(string Name);
@@ -72,7 +73,7 @@ public sealed partial class PostgresFlowVersionStore(NpgsqlDataSource source)
     }
 
     private static object Step(FlowStep s) => new { code = s.Code, name = s.Name, position = s.Position, maxDelaySeconds = s.MaxDelaySeconds,
-        overrides = s.Overrides ?? new Dictionary<string, int>() };
+        overrides = s.Overrides ?? new Dictionary<string, int>(), stage = s.EffectiveStage, kind = s.Kind, groups = s.Groups ?? [] };
 
     private static async Task<(Dictionary<string, object?> Flow, Dictionary<string, object?> Version)> Find(NpgsqlConnection c, NpgsqlTransaction? tx,
         Guid project, string code, int number, CancellationToken ct, bool forUpdate = false)
@@ -182,14 +183,28 @@ public sealed partial class PostgresFlowVersionStore(NpgsqlDataSource source)
         if (input is null || input.Count is < 2 or > 30) throw new PilotHttpException(400, "Akış 2–30 sıralı adımdan oluşmalı.");
         var codes = new HashSet<string>(StringComparer.Ordinal);
         var steps = new List<FlowStep>();
+        var previousStage = 0;
         for (var i = 0; i < input.Count; i++)
         {
             var s = input[i];
             var code = (s.Code ?? "").Trim();
             if (!CodePattern().IsMatch(code) || !codes.Add(code)) throw new PilotHttpException(400, $"{i + 1}. adımın kodu geçersiz ya da tekrar ediyor.");
             var name = Text(s.Name, 160, $"{i + 1}. adımın adı");
+            var kind = string.IsNullOrWhiteSpace(s.Kind) ? StepKind.Required : s.Kind.Trim();
+            if (kind is not (StepKind.Required or StepKind.Optional or StepKind.Conditional)) throw new PilotHttpException(400, $"{i + 1}. adımın türü required, optional veya conditional olmalı.");
+            // Stages are numbered in step order: the same number as the previous step means "in parallel with it".
+            var stage = s.Stage ?? (i == 0 ? 0 : previousStage + 1);
+            if (i == 0 && (stage != 0 || kind != StepKind.Required)) throw new PilotHttpException(400, "Başlangıç adımı 0. aşamada ve zorunlu olmalı.");
+            if (i > 0 && (stage < previousStage || stage > previousStage + 1 || stage == 0)) throw new PilotHttpException(400, $"{i + 1}. adımın aşaması bir öncekiyle aynı ya da bir fazla olmalı.");
+            if (i > 0 && stage == 0) throw new PilotHttpException(400, "Başlangıç aşamasında yalnızca bir adım olabilir.");
+            previousStage = stage;
+            var groups = (s.Groups ?? []).Select(g => g.Trim()).Where(g => g.Length > 0).Distinct(StringComparer.Ordinal).ToList();
+            if (kind == StepKind.Conditional && groups.Count == 0) throw new PilotHttpException(400, $"{i + 1}. koşullu adım için en az bir grup gerekir.");
+            if (groups.Any(g => !CodePattern().IsMatch(g))) throw new PilotHttpException(400, $"{i + 1}. adımın grup kodu geçersiz.");
+            if (kind != StepKind.Conditional) groups.Clear();
             if (i == 0 && s.MaxDelaySeconds is not null) throw new PilotHttpException(400, "Başlangıç adımının süresi olmaz.");
-            if (i > 0 && s.MaxDelaySeconds is null or < 1 or > 2592000) throw new PilotHttpException(400, $"{i + 1}. adımın süresi 1 saniye–30 gün arasında olmalı.");
+            if (i > 0 && kind != StepKind.Optional && s.MaxDelaySeconds is null or < 1 or > 2592000) throw new PilotHttpException(400, $"{i + 1}. adımın süresi 1 saniye–30 gün arasında olmalı.");
+            if (i > 0 && kind == StepKind.Optional && s.MaxDelaySeconds is not null and (< 1 or > 2592000)) throw new PilotHttpException(400, $"{i + 1}. adımın süresi 1 saniye–30 gün arasında olmalı ya da boş.");
             Dictionary<string, int>? overrides = null;
             if (s.Overrides is { Count: > 0 })
             {
@@ -203,7 +218,7 @@ public sealed partial class PostgresFlowVersionStore(NpgsqlDataSource source)
                     overrides[group] = seconds;
                 }
             }
-            steps.Add(new FlowStep(code, name, i, s.MaxDelaySeconds, overrides));
+            steps.Add(new FlowStep(code, name, i, s.MaxDelaySeconds, overrides, stage, kind, groups));
         }
         return steps;
     }

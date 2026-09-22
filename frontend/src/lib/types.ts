@@ -1,4 +1,6 @@
-export type TransactionStatus = "pending" | "inProgress" | "completed" | "failed";
+export type TransactionStatus = "pending" | "inProgress" | "completed" | "failed" | "cancelled";
+export type StepKind = "required" | "optional" | "conditional";
+export const stepKindLabels: Record<StepKind, string> = { required: "Zorunlu", optional: "İsteğe bağlı", conditional: "Koşullu" };
 export type DelayState = "none" | "waiting" | "overdue" | "pending_processing" | "pending_evaluation";
 
 export type DelayInfo = {
@@ -12,7 +14,7 @@ export type DelayInfo = {
 export type Flow = { id: string; code: string; name: string; stepCount: number };
 export type Summary = {
   total: number; pending: number; inProgress: number;
-  completed: number; failed: number; overdue: number; queriedAt: string;
+  completed: number; failed: number; overdue: number; queriedAt: string; cancelled: number;
 };
 export type TransactionItem = {
   id: string; flow: string; transactionId: string; status: TransactionStatus;
@@ -24,11 +26,11 @@ export type TransactionPage = {
 };
 export type TimelineStep = {
   code: string; name: string; position: number; maxDelaySeconds: number | null;
-  observation: "not_observed" | "completed" | "failed";
-  occurredAt: string | null; error: string | null;
+  observation: "not_observed" | "completed" | "failed" | "skipped" | "cancelled" | "not_applicable";
+  occurredAt: string | null; error: string | null; stage: number; kind: StepKind;
 };
 export type ObservedEvent = {
-  eventId: string; step: string; status: "completed" | "failed";
+  eventId: string; step: string; status: "completed" | "failed" | "skipped" | "cancelled";
   occurredAt: string; receivedAt: string; error: string | null;
 };
 export type TransactionDetail = {

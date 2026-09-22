@@ -56,10 +56,11 @@ public static partial class InputValidation
             "inprogress" => TransactionStatus.InProgress,
             "failed" => TransactionStatus.Failed,
             "completed" => TransactionStatus.Completed,
+            "cancelled" => TransactionStatus.Cancelled,
             _ => null
         };
         if (!string.IsNullOrWhiteSpace(status) && parsedStatus is null)
-            errors["status"] = ["pending, inProgress, failed veya completed kullanın."];
+            errors["status"] = ["pending, inProgress, failed, completed veya cancelled kullanın."];
 
         delay = string.IsNullOrWhiteSpace(delay) ? null : delay.Trim().ToLowerInvariant();
         if (delay is not (null or "none" or "waiting" or "overdue"

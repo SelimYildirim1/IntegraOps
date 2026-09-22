@@ -4,7 +4,10 @@ import { deadline } from "@/lib/time";
 
 export const statusLabels: Record<string, string> = {
   pending: "İşlenmeyi bekliyor", inProgress: "Devam ediyor",
-  completed: "Tamamlandı", failed: "Hata bildirildi",
+  completed: "Tamamlandı", failed: "Hata bildirildi", cancelled: "İptal edildi",
+};
+export const observationLabels: Record<string, string> = {
+  not_observed: "Bildirim yok", completed: "Tamamlandı", failed: "Hata bildirildi", skipped: "Atlandı", cancelled: "İptal", not_applicable: "Bu işlem için beklenmiyor",
 };
 export const delayLabels: Record<string, string> = {
   none: "Yok", waiting: "Bekleniyor", overdue: "Gecikmiş",
@@ -14,7 +17,7 @@ export const delayLabels: Record<string, string> = {
 export function Badge({ value, delay = false }: { value: string; delay?: boolean }) {
   const tone = value === "completed" ? "good" : value === "failed" ? "bad"
     : value === "overdue" ? "warn" : ["waiting", "inProgress"].includes(value) ? "info" : "";
-  const label = value === "not_observed" ? "Bildirim yok"
+  const label = observationLabels[value] && !statusLabels[value] ? observationLabels[value]
     : (delay ? delayLabels[value] : statusLabels[value]) ?? value;
   return <span className={`badge ${tone}`}>{label}</span>;
 }

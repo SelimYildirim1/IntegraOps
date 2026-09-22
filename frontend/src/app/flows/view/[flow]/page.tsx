@@ -42,8 +42,11 @@ export default async function FlowDetailPage({ params, searchParams }: { params:
             <div className="mark"><span className="dot">{index + 1}</span><span className="line" /></div>
             <div className="step">
               <div className="step-head"><h3>{step.name}</h3></div>
-              <div className="step-meta"><span className="mono">{step.code}</span></div>
-              <span className="gap">{index === 0 ? "Başlangıç adımı, süresi ölçülmez" : `${steps[index - 1].name} tamamlandıktan sonra ${duration(step.maxDelaySeconds)} içinde beklenir`}</span>
+              <div className="step-meta"><span className="mono">{step.code}</span>
+                {step.kind && step.kind !== "required" && <span className="badge test">{step.kind === "optional" ? "İsteğe bağlı" : `Koşullu: ${(step.groups ?? []).join(", ")}`}</span>}
+                {index > 0 && (step.stage ?? index) === (steps[index - 1].stage ?? index - 1) && <span className="badge info">Paralel</span>}</div>
+              <span className="gap">{index === 0 ? "Başlangıç adımı, süresi ölçülmez" : step.maxDelaySeconds === null ? "Süresi ölçülmez"
+                : `${(step.stage ?? index) === (steps[index - 1].stage ?? index - 1) ? "Aşama başladıktan" : `${steps[index - 1].name} tamamlandıktan`} sonra ${duration(step.maxDelaySeconds)} içinde beklenir`}</span>
               {step.overrides && Object.keys(step.overrides).length > 0 && <span className="gap">Grup süreleri: {Object.entries(step.overrides).map(([g, s]) => `${g} ${duration(s)}`).join(", ")}</span>}
             </div>
           </li>)}</ol>

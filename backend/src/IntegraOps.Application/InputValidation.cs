@@ -61,7 +61,9 @@ public static partial class InputValidation
         EventStatus status = default;
         if (request.Status == "completed") status = EventStatus.Completed;
         else if (request.Status == "failed") status = EventStatus.Failed;
-        else errors["status"] = ["completed veya failed gönderin."];
+        else if (request.Status == "skipped") status = EventStatus.Skipped;     // explicitly not performed; counts as done
+        else if (request.Status == "cancelled") status = EventStatus.Cancelled; // the whole transaction is cancelled
+        else errors["status"] = ["completed, failed, skipped veya cancelled gönderin."];
 
         DateTimeOffset occurredAt = default;
         if (request.OccurredAt is null || request.OccurredAt.Length > 40 ||

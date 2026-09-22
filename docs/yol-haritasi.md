@@ -2,7 +2,7 @@
 
 Bu belge projenin V1 kapanışından kurumsal ürüne kadar olan geliştirme planını ve her aşamanın güncel durumunu tutar. Aşamalar sırayla uygulanır. Bir aşama ancak kendi bitiş ölçütü karşılandığında tamamlanmış sayılır.
 
-**Son güncelleme:** 22 Eylül 2026 (V2 raporlama tamamlandı)
+**Son güncelleme:** 22 Eylül 2026 (V2 karmaşık süreçler tamamlandı)
 
 ## Durum işaretleri
 
@@ -16,7 +16,7 @@ Bu belge projenin V1 kapanışından kurumsal ürüne kadar olan geliştirme pla
 
 ## Şu an neredeyiz
 
-**Aktif aşama:** V2 karmaşık süreçler (Aşama 11). Aşama 2, 3 ve 5 dış girdi bekliyor; V1.1, V1.2, Go ajanı, mutabakat ve raporlama tamamlandı.
+**Aktif aşama:** Entegrasyonların tekrar kullanılabilir hale gelmesi (Aşama 12). Aşama 2, 3 ve 5 dış girdi bekliyor; V1.1, V1.2 ve V2'nin üç paketi tamamlandı.
 
 Aşama 1 tamamlandı. Aşama 3 ve 4'ün yerelde sınanabilen bütün kısımları tamamlandı; kalan görevler gerçek sunucu, alan adı ve SMTP bilgisine bağlı. Bu girdiler gelene kadar Aşama 2, 3 ve 5 için kullanıcı kararı gerekiyor:
 
@@ -295,23 +295,25 @@ Python'ın ilk bağımsız ürün bileşeni mutabakat servisidir. Bugün Python 
 
 ---
 
-## 11. V2 — Daha karmaşık süreçlerin takibi ⏳
+## 11. V2 — Daha karmaşık süreçlerin takibi ✅
 
 Doğrusal akışların ötesine geçmek ayrı bir iş kuralı geliştirmesidir.
 
 | Özellik | Durum |
 |---|---|
-| Paralel ilerleyen adımlar | ⏳ |
-| Koşula bağlı adımlar | ⏳ |
-| İsteğe bağlı adımlar | ⏳ |
-| Atlanan adımın açıkça belirtilmesi | ⏳ |
-| İşlemin iptal edilmesi | ⏳ |
-| Birden fazla dalın tamamlanmasını bekleyen noktalar | ⏳ |
-| Bu durumların işlem sonucuna ve alarmlara etkisi | ⏳ |
+| Paralel ilerleyen adımlar | ✅ Aynı aşama numarası; her dal ayrı süre ve alarm |
+| Koşula bağlı adımlar | ✅ Gruba bağlı koşullu adım |
+| İsteğe bağlı adımlar | ✅ Beklenmez, ölçülmez |
+| Atlanan adımın açıkça belirtilmesi | ✅ `skipped` bildirimi |
+| İşlemin iptal edilmesi | ✅ `cancelled` bildirimi, İptal edildi durumu |
+| Birden fazla dalın tamamlanmasını bekleyen noktalar | ✅ Sonraki aşama bütün beklenen dalları bekler |
+| Bu durumların işlem sonucuna ve alarmlara etkisi | ✅ Durum kuralları, alarm kapanış nedenleri, rapor ölçümleri |
 
 **Teknoloji:** Kurallar .NET çekirdeğinde, model PostgreSQL'de, gösterim Next.js'te.
 
 **Amaç:** Gerçek iş süreçlerini doğru yorumlamak. IntegraOps bu aşamada da ERP, ödeme veya kargo işlemlerini yürütmez, durumlarını izler. Koşula bağlı olarak atlanan bir adım, bildirimi gelmediği için yanlış alarm üretmez.
+
+**Doğrulama:** `scripts/verify_v2_flows.py` 24 kontrol, 8 birim testi. Ayrıntı `docs/v2-akislar.md`.
 
 ---
 
@@ -405,3 +407,4 @@ Yeterli geçmiş veri oluşursa Python üzerinden anomali tespiti, olası neden 
 | 22 Eylül 2026 | Aşama 8 | Go aktarım ajanı, yaşam sinyali (migration 006), 21 kontrol geçti. **Aşama 8 tamamlandı** |
 | 22 Eylül 2026 | Aşama 9 | Python mutabakat servisi, sözleşme uçları (migration 007), 18 kontrol geçti. **Aşama 9 tamamlandı** |
 | 22 Eylül 2026 | Aşama 10 | Rapor göstergeleri, eğilim, özet e-postaları (migration 008), 24 kontrol geçti. **Aşama 10 tamamlandı** |
+| 22 Eylül 2026 | Aşama 11 | Paralel/koşullu/isteğe bağlı adımlar, atlama ve iptal (migration 009), 24 kontrol geçti. **Aşama 11 tamamlandı** |

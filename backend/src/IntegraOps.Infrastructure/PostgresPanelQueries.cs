@@ -48,7 +48,8 @@ public sealed class PostgresPanelQueries(NpgsqlDataSource dataSource) : IPanelQu
                 count(*) FILTER (WHERE status = 'Completed') AS completed,
                 count(*) FILTER (WHERE status = 'Failed') AS failed,
                 count(*) FILTER (WHERE delay_state = 'overdue') AS overdue,
-                statement_timestamp() AS queried_at
+                statement_timestamp() AS queried_at,
+                count(*) FILTER (WHERE status = 'Cancelled') AS cancelled
             FROM filtered
             """,
             ("projectId", projectId), ("flow", query.Flow),
@@ -61,6 +62,6 @@ public sealed class PostgresPanelQueries(NpgsqlDataSource dataSource) : IPanelQu
         return new TransactionSummary(
             reader.GetInt64(0), reader.GetInt64(1), reader.GetInt64(2),
             reader.GetInt64(3), reader.GetInt64(4), reader.GetInt64(5),
-            new DateTimeOffset(reader.GetDateTime(6)));
+            new DateTimeOffset(reader.GetDateTime(6)), reader.GetInt64(7));
     }
 }

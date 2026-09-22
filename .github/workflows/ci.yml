@@ -57,6 +57,7 @@ jobs:
           python3 -m venv reconciler/.venv && reconciler/.venv/bin/pip install --quiet pg8000
           python3 scripts/verify_reconciler.py
           python3 scripts/verify_reports.py
+          python3 scripts/verify_v2_flows.py
       - name: Start monitoring stack
         run: docker compose -f docker-compose.yml -f compose.monitoring.yml up -d
       - name: Verify monitoring

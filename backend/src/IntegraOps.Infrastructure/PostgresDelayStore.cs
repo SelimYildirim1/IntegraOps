@@ -76,7 +76,7 @@ public sealed class PostgresDelayStore(NpgsqlDataSource dataSource)
             ("state", assessment.State), ("step", assessment.Step), ("startedAt", assessment.StartedAt),
             ("deadlineAt", assessment.DeadlineAt), ("checkedAt", now));
         await update.ExecuteNonQueryAsync(ct);
-        await PostgresAlarmStore.Sync(connection, transaction, flow, transactionId, projection, assessment, ct);
+        await PostgresAlarmStore.Sync(connection, transaction, flow, transactionId, projection, assessment, now, ct);
     }
 
     internal static async Task<DelayView> ReadAsync(NpgsqlConnection connection, NpgsqlTransaction transaction,

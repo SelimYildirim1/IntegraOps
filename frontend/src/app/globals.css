@@ -407,3 +407,8 @@ td.late { color: var(--bad); }
 .chart .axis { font-size: 11px; fill: var(--ink-3); }
 .chart .value { font-size: 12px; fill: var(--ink-2); font-variant-numeric: tabular-nums; }
 .stat .hint { display: block; margin-top: 4px; font-size: 12px; color: var(--ink-3); }
+
+/* V2: karmaşık akışlar */
+.rail .dot.skipped { background: var(--mute-tint); border-color: var(--ink-3); color: var(--ink-2); }
+.rail .dot.muted { border-color: var(--line); color: var(--ink-3); }
+.rail li.parallel .step { border-left: 3px solid var(--info-tint); padding-left: 12px; }
