@@ -32,6 +32,8 @@ builder.Services.AddHostedService<OutboxPublisher>();
 builder.Services.AddHostedService<EventConsumer>();
 builder.Services.AddHostedService<DelayMonitor>();
 builder.Services.AddHostedService<MailDispatcher>();
+builder.Services.AddSingleton<IConfigurationReader, ConfigurationReader>();
+builder.Services.AddHostedService<DigestScheduler>();
 builder.Services.AddSingleton<RetentionSweeper>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<RetentionSweeper>());
 builder.Services.AddIntegraOpsTelemetry(builder.Configuration, "worker");

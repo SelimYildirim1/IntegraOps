@@ -42,6 +42,9 @@ export async function adminAction(_previous: ActionState, data: FormData): Promi
         message = "Takvim kaydedildi."; break;
       }
       case "calendar-delete": await api(`/calendars/${id}`, "DELETE"); message = "Takvim silindi."; break;
+      case "digest-settings": await api("/reports/digest", "PUT", { period: field("period"), hour: Number(field("hour")), timeZone: field("timezone") }); message = "Özet ayarları kaydedildi."; break;
+      case "digest-send": { const r = await api<{ recipients: number }>("/reports/digest", "POST", { period: field("period") });
+        message = r.recipients > 0 ? `Özet ${r.recipients} e-posta kanalına kuyruğa alındı.` : "Etkin e-posta kanalı yok; özet gönderilmedi."; break; }
       case "retention": {
         const values = { finishedTransactionDays: days("transactions"), notificationDays: days("notifications"), auditDays: days("audit") };
         if (Object.values(values).some(Number.isNaN)) return { message: "Gün değerleri tam sayı olmalı." };

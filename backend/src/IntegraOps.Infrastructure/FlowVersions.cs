@@ -69,11 +69,11 @@ public static class FlowVersions
     {
         foreach (var stat in StepStats.Compute(flow, projection))
             await Run(c, tx, """
-                INSERT INTO transaction_step_stats (transaction_id, project_id, step_code, started_at, completed_at, elapsed_seconds, allowance_seconds, breached)
-                VALUES (@t, @p, @s, @started, @completed, @elapsed, @allowance, @breached)
+                INSERT INTO transaction_step_stats (transaction_id, project_id, step_code, started_at, completed_at, elapsed_seconds, allowance_seconds, breached, out_of_order)
+                VALUES (@t, @p, @s, @started, @completed, @elapsed, @allowance, @breached, @ooo)
                 ON CONFLICT (transaction_id, step_code) DO UPDATE SET started_at = EXCLUDED.started_at, completed_at = EXCLUDED.completed_at,
-                    elapsed_seconds = EXCLUDED.elapsed_seconds, allowance_seconds = EXCLUDED.allowance_seconds, breached = EXCLUDED.breached
+                    elapsed_seconds = EXCLUDED.elapsed_seconds, allowance_seconds = EXCLUDED.allowance_seconds, breached = EXCLUDED.breached, out_of_order = EXCLUDED.out_of_order
                 """, ct, ("t", transactionId), ("p", projectId), ("s", stat.Code), ("started", stat.StartedAt), ("completed", stat.CompletedAt),
-                ("elapsed", stat.ElapsedSeconds), ("allowance", stat.AllowanceSeconds), ("breached", stat.Breached));
+                ("elapsed", stat.ElapsedSeconds), ("allowance", stat.AllowanceSeconds), ("breached", stat.Breached), ("ooo", stat.OutOfOrder));
     }
 }
