@@ -14,7 +14,7 @@ public sealed class PilotHttpException(int status, string message) : Exception(m
 public sealed record LoginInput(string Email, string Password);
 public sealed record FirstOwnerInput(string Email, string Name, string Password);
 public sealed record MemberInput(string Email, string Name, string Role, string? Password);
-public sealed record KeyInput(string Name, string Scope);
+public sealed record KeyInput(string Name, string Scope, Guid? ConnectionId = null);
 public sealed record PasswordInput(string CurrentPassword, string NewPassword);
 public sealed record ChannelInput(string Name, string Kind, string Target, string? Secret);
 public sealed record EnabledInput(bool Enabled);
@@ -28,7 +28,8 @@ public sealed record AgentHeartbeatInput(string? Name, string? Version, string? 
     long? SentTotal, long? DeadTotal, long? RetryTotal, string? LastError, string? LastSuccessAt, System.Text.Json.JsonElement? Config);
 public sealed record RetentionInput(int? FinishedTransactionDays, int? NotificationDays, int? AuditDays);
 public sealed record SessionUser(Guid Id, string Email, string Name);
-public sealed record ProjectIdentity(Guid ProjectId, Guid OrganizationId, Guid? UserId, string Role, string? Scope);
+public sealed record ProjectIdentity(Guid ProjectId, Guid OrganizationId, Guid? UserId, string Role, string? Scope,
+    Guid? KeyId = null, Guid? ConnectionId = null);
 
 public static class PilotSecurity
 {
@@ -65,6 +66,7 @@ public static class PilotSecurity
         services.AddSingleton<IConfigurationReader, ConfigurationReader>();
         services.AddSingleton<PostgresReconciliationStore>();
         services.AddSingleton<PostgresReportQueries>();
+        services.AddSingleton<PostgresConnectionStore>();
         return services;
     }
 }

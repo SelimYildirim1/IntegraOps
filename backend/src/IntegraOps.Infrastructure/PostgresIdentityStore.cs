@@ -112,12 +112,14 @@ public sealed class PostgresIdentityStore(NpgsqlDataSource source)
                 JOIN project_members m ON m.project_id=p.id WHERE p.id=@p AND m.user_id=@u
                 """, ct, ("p", project), ("u", user))
             : await Rows(c, null, """
-                SELECT p.id,p.organization_id,'key'::text role,k.scope FROM api_keys k
+                SELECT p.id,p.organization_id,'key'::text role,k.scope,k.id key_id,k.connection_id FROM api_keys k
                 JOIN projects p ON p.id=k.project_id WHERE lower(k.key_hash)=@h AND k.revoked_at IS NULL
+                    AND (k.expires_at IS NULL OR k.expires_at>clock_timestamp())
                 """, ct, ("h", Hash(apiKey)));
         if (rows.Count == 0) return null;
         var r = rows[0];
-        return new((Guid)r["id"]!, (Guid)r["organization_id"]!, user, (string)r["role"]!, r["scope"] as string);
+        return new((Guid)r["id"]!, (Guid)r["organization_id"]!, user, (string)r["role"]!, r["scope"] as string,
+            r.GetValueOrDefault("key_id") as Guid?, r.GetValueOrDefault("connection_id") as Guid?);
     }
 
     public async Task<object> Projects(Guid user, CancellationToken ct)
@@ -217,7 +219,10 @@ public sealed class PostgresIdentityStore(NpgsqlDataSource source)
     public async Task<object> Keys(Guid project, CancellationToken ct)
     {
         await using var c = await source.OpenConnectionAsync(ct);
-        return await Rows(c, null, "SELECT id,name,scope,key_prefix,created_at,revoked_at FROM api_keys WHERE project_id=@p ORDER BY created_at DESC", ct, ("p", project));
+        return await Rows(c, null, """
+            SELECT k.id,k.name,k.scope,k.key_prefix,k.created_at,k.revoked_at,k.last_used_at,k.expires_at,k.rotated_to,k.connection_id,co.name connection
+            FROM api_keys k LEFT JOIN connections co ON co.id=k.connection_id WHERE k.project_id=@p ORDER BY k.created_at DESC
+            """, ct, ("p", project));
     }
     public async Task<object> CreateKey(ProjectIdentity actor, KeyInput input, CancellationToken ct)
     {
@@ -227,8 +232,10 @@ public sealed class PostgresIdentityStore(NpgsqlDataSource source)
         await using var c = await source.OpenConnectionAsync(ct);
         await using var tx = await c.BeginTransactionAsync(ct);
         await LockProject(c, tx, actor, ct);
-        await Run(c, tx, "INSERT INTO api_keys(id,project_id,name,scope,key_hash,key_prefix) VALUES(@id,@p,@n,@s,@h,@prefix)", ct,
-            ("id", id), ("p", actor.ProjectId), ("n", name), ("s", input.Scope), ("h", Hash(key)), ("prefix", key[..16]));
+        if (input.ConnectionId is { } connection && await Value(c, tx, "SELECT 1 FROM connections WHERE id=@c AND project_id=@p", ct, ("c", connection), ("p", actor.ProjectId)) is null)
+            throw new PilotHttpException(400, "Bağlantı bu projede bulunamadı.");
+        await Run(c, tx, "INSERT INTO api_keys(id,project_id,name,scope,key_hash,key_prefix,connection_id) VALUES(@id,@p,@n,@s,@h,@prefix,CAST(@c AS uuid))", ct,
+            ("id", id), ("p", actor.ProjectId), ("n", name), ("s", input.Scope), ("h", Hash(key)), ("prefix", key[..16]), ("c", input.ConnectionId));
         await Audit(c, tx, actor.ProjectId, actor.UserId, "key.create", id.ToString(), ct);
         await tx.CommitAsync(ct);
         return new { id, key, name, scope = input.Scope };

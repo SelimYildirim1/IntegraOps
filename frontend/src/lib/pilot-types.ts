@@ -53,7 +53,16 @@ export type RetentionInfo = {
   policy: { finished_transaction_days: number | null; notification_days: number | null; audit_days: number | null; updated_at: string | null };
   runs: { ran_at: string; transactions_deleted: number; deliveries_deleted: number; audit_deleted: number }[];
 };
-export type ProjectKey = { id: string; name: string; scope: string; key_prefix: string; revoked_at: string | null };
+export type ProjectKey = { id: string; name: string; scope: string; key_prefix: string; revoked_at: string | null;
+  last_used_at?: string | null; expires_at?: string | null; rotated_to?: string | null; connection_id?: string | null; connection?: string | null };
+export type Connection = {
+  id: string; name: string; kind: string; description: string; template: Record<string, string> | null; template_code: string | null; contract_version: number;
+  client_name: string | null; client_version: string | null; events_total: number; rejected_total: number; last_event_at: string | null; last_ping_at: string | null;
+  last_error: string | null; last_error_at: string | null; created_at: string; active_keys: number; key_last_used_at: string | null;
+  agent_seen_at: string | null; agent_version: string | null; compatible: boolean | null;
+};
+export type ConnectionTemplate = { code: string; name: string; description: string; template: Record<string, string>; sample: unknown };
+export type MappingTestResult = { events: { index: number; event: { eventId: string; flow: string; transactionId: string; step: string; status: string; occurredAt: string }; problems: string[] }[] };
 export type Channel = { id: string; name: string; kind: string; target: string; enabled: boolean };
 export type Alarm = {
   id: string; flow: string; business_id: string; kind: string; step_code: string; error: string | null;

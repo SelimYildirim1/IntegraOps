@@ -124,11 +124,23 @@ projectApi.MapPost("/flows", async (HttpContext context, CreateFlowRequest reque
 });
 
 projectApi.MapPost("/events", async (HttpContext context, SubmitEventRequest request,
-    ITrackingStore store, TimeProvider timeProvider, CancellationToken ct) =>
+    ITrackingStore store, TimeProvider timeProvider, PostgresConnectionStore connections, CancellationToken ct) =>
 {
     var access = (ProjectAccess)context.Items[typeof(ProjectAccess)]!;
-    var validated = InputValidation.Event(request, timeProvider.GetUtcNow());
-    var receipt = await store.AcceptAsync(access.ProjectId, validated, ct);
+    var actor = (ProjectIdentity)context.Items[typeof(ProjectIdentity)]!;
+    EventReceipt receipt; ValidatedEvent validated;
+    try
+    {
+        validated = InputValidation.Event(request, timeProvider.GetUtcNow());
+        receipt = await store.AcceptAsync(access.ProjectId, validated, ct);
+    }
+    catch (Exception ex) when (ex is RequestValidationException or ResourceNotFoundException or ResourceConflictException)
+    {
+        // Rejections are part of the connection's history so integration mistakes are visible in the panel.
+        await connections.RecordUsage(actor, context.Request.Headers.UserAgent, false, ex is RequestValidationException v ? string.Join("; ", v.Errors.Select(e => e.Key + ": " + e.Value[0])) : ex.Message, ct);
+        throw;
+    }
+    await connections.RecordUsage(actor, context.Request.Headers.UserAgent, true, null, ct);
     IntegraOpsMetrics.EventsAccepted.Add(1, new KeyValuePair<string, object?>("duplicate", receipt.Duplicate));
     var location = $"/api/v1/flows/{validated.Flow}/transactions/{validated.TransactionId}";
     return receipt.Duplicate ? Results.Ok(receipt) : Results.Accepted(location, receipt);

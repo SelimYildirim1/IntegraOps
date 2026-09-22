@@ -7,7 +7,7 @@ import type { ActionState } from "@/lib/pilot-types";
 export async function adminAction(_previous: ActionState, data: FormData): Promise<ActionState> {
   const field = (name: string) => String(data.get(name) ?? "");
   const op = field("op"); const id = field("id");
-  const withId = ["member-remove", "key-revoke", "channel-toggle", "ack", "retry", "assign", "note", "view-delete", "calendar-delete", "calendar-update"].includes(op);
+  const withId = ["member-remove", "key-revoke", "channel-toggle", "ack", "retry", "assign", "note", "view-delete", "calendar-delete", "calendar-update", "connection-delete", "key-rotate"].includes(op);
   if (withId && !/^[0-9a-f-]{36}$/i.test(id)) return { message: "Kayıt kimliği geçersiz." };
   const days = (name: string) => { const v = field(name).trim(); return v === "" ? null : /^\d{1,4}$/.test(v) ? Number(v) : NaN; };
   let result: { key?: string; secret?: string; invited?: boolean } | undefined;
@@ -22,7 +22,20 @@ export async function adminAction(_previous: ActionState, data: FormData): Promi
         break;
       }
       case "member-remove": await api(`/members/${id}`, "DELETE"); break;
-      case "key-create": result = await api("/keys", "POST", { name: field("name"), scope: field("scope") }); break;
+      case "key-create": result = await api("/keys", "POST", { name: field("name"), scope: field("scope"), connectionId: field("connectionId") || null }); break;
+      case "key-rotate": {
+        const grace = field("graceHours").trim();
+        result = await api("/keys/" + id + "/rotate", "POST", { graceHours: grace === "" ? 24 : Number(grace) });
+        message = "Yeni anahtar üretildi. Eski anahtar geçiş süresi boyunca çalışmaya devam eder."; break;
+      }
+      case "connection-create": {
+        let template: unknown = null;
+        const raw = field("template").trim();
+        if (raw) { try { template = JSON.parse(raw); } catch { return { message: "Şablon geçerli JSON değil." }; } }
+        await api("/connections", "POST", { name: field("name"), kind: field("kind"), description: field("description"), template, templateCode: field("templateCode") || null });
+        message = "Bağlantı oluşturuldu."; break;
+      }
+      case "connection-delete": await api(`/connections/${id}`, "DELETE"); message = "Bağlantı silindi."; break;
       case "key-revoke": await api(`/keys/${id}`, "DELETE"); break;
       case "channel-create": result = await api("/channels", "POST", { name: field("name"), kind: field("kind"), target: field("target"), secret: field("secret") || null }); break;
       case "channel-toggle": await api(`/channels/${id}`, "PUT", { enabled: field("enabled") === "true" }); break;
@@ -54,7 +67,7 @@ export async function adminAction(_previous: ActionState, data: FormData): Promi
       default: return { message: "İşlem tanınmadı." };
     }
   } catch (e) { return { message: apiMessage(e) }; }
-  revalidatePath("/settings"); revalidatePath("/alarms", "layout"); revalidatePath("/operations");
+  revalidatePath("/settings"); revalidatePath("/alarms", "layout"); revalidatePath("/operations"); revalidatePath("/connections");
   const path = field("path"); if (path === "/" || path === "/alarms") revalidatePath(path);
   return { ok: true, message, secret: result?.key || result?.secret };
 }

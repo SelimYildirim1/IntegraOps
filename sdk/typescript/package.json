@@ -1,0 +1,20 @@
+{
+  "name": "@integraops/sender",
+  "version": "0.1.0",
+  "description": "IntegraOps event sender for Node.js source systems",
+  "license": "UNLICENSED",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": ["dist"],
+  "engines": { "node": ">=20" },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "node --import tsx --test test/sender.test.ts"
+  },
+  "devDependencies": {
+    "@types/node": "24.13.4",
+    "tsx": "4.20.5",
+    "typescript": "5.9.3"
+  }
+}
