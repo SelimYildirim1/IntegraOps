@@ -1,5 +1,5 @@
 import { api, apiMessage, getAccess } from "@/lib/api";
-import type { Member, ProjectKey, Channel, RetentionInfo, Calendar } from "@/lib/pilot-types";
+import type { Member, ProjectKey, Channel, RetentionInfo, Calendar, DigestInfo } from "@/lib/pilot-types";
 import { roleNames } from "@/lib/pilot-types";
 import { Message, number, PageHead, Time } from "@/components/ui";
 import ActionForm from "@/components/action-form";
@@ -31,11 +31,11 @@ function CalendarForm({ calendar }: { calendar?: Calendar }) {
 }
 
 export default async function SettingsPage() {
-  let members: Member[], keys: ProjectKey[], channels: Channel[], retention: RetentionInfo, calendars: Calendar[];
+  let members: Member[], keys: ProjectKey[], channels: Channel[], retention: RetentionInfo, calendars: Calendar[], digest: DigestInfo;
   try {
     const access = await getAccess();
     if (access.role !== "owner") return <Message title="Proje ayarları" description="Kullanıcıları, anahtarları ve bildirim kanallarını yalnızca proje sahibi yönetir." />;
-    [members, keys, channels, retention, calendars] = await Promise.all([api<Member[]>("/members"), api<ProjectKey[]>("/keys"), api<Channel[]>("/channels"), api<RetentionInfo>("/retention"), api<Calendar[]>("/calendars")]);
+    [members, keys, channels, retention, calendars, digest] = await Promise.all([api<Member[]>("/members"), api<ProjectKey[]>("/keys"), api<Channel[]>("/channels"), api<RetentionInfo>("/retention"), api<Calendar[]>("/calendars"), api<DigestInfo>("/reports/digest")]);
   } catch (e) { return <Message title="Ayarlar yüklenemedi" description={apiMessage(e)} />; }
   const activeKeys = keys.filter(k => !k.revoked_at), revokedKeys = keys.filter(k => k.revoked_at);
   const p = retention.policy;
@@ -139,6 +139,30 @@ export default async function SettingsPage() {
           {c.version_count === 0 && <ActionForm action={adminAction} label="Takvimi sil" compact tone="danger"><Op value="calendar-delete" id={c.id} /></ActionForm>}
         </details>)}
         <details className="details"><summary>Yeni takvim</summary><CalendarForm /></details>
+      </div>
+    </section>
+
+    <section className="surface" id="digest">
+      <div className="surface-head"><div><h2>Rapor özeti</h2><p>Günlük ya da haftalık özet, etkin e-posta kanallarına seçilen saatte gönderilir. Haftalık özet pazartesi günü gider.</p></div>
+        {digest.settings.updated_at && <span className="count">Son güncelleme <Time value={digest.settings.updated_at} /></span>}</div>
+      <div className="surface-body">
+        <ActionForm action={adminAction} label="Özet ayarlarını kaydet"><Op value="digest-settings" />
+          <div className="form-grid">
+            <div className="field"><label htmlFor="dg-period">Dönem</label><select id="dg-period" name="period" defaultValue={digest.settings.digest_period}>
+              <option value="none">Gönderme</option><option value="daily">Günlük</option><option value="weekly">Haftalık</option></select></div>
+            <div className="field"><label htmlFor="dg-hour">Saat</label><input id="dg-hour" name="hour" type="number" min={0} max={23} defaultValue={digest.settings.digest_hour} /></div>
+            <div className="field"><label htmlFor="dg-tz">Saat dilimi</label><input id="dg-tz" name="timezone" maxLength={64} defaultValue={digest.settings.digest_timezone} /></div>
+          </div>
+        </ActionForm>
+        <div className="assign-row">
+          <ActionForm action={adminAction} label="Günlük özeti şimdi gönder" compact tone="secondary"><Op value="digest-send" /><input type="hidden" name="period" value="daily" /></ActionForm>
+          <ActionForm action={adminAction} label="Haftalık özeti şimdi gönder" compact tone="secondary"><Op value="digest-send" /><input type="hidden" name="period" value="weekly" /></ActionForm>
+        </div>
+        {digest.sent.length > 0 && <div className="table-wrap"><table><thead><tr><th>Gönderim</th><th>Dönem</th><th>Aralık</th><th className="right">Alıcı</th><th>Tetikleyen</th></tr></thead><tbody>
+          {digest.sent.map((d, i) => <tr key={i}><td className="nowrap"><Time value={d.sent_at} /></td><td>{d.period === "daily" ? "Günlük" : "Haftalık"}</td>
+            <td className="nowrap"><Time value={d.period_from} /> – <Time value={d.period_to} /></td><td className="right num">{d.recipients}</td>
+            <td>{d.triggered_by === "schedule" ? "Zamanlayıcı" : d.triggered_by === "manual" ? "Panel" : "API"}</td></tr>)}
+        </tbody></table></div>}
       </div>
     </section>
 

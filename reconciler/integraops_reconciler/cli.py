@@ -71,7 +71,9 @@ def validate(values: dict) -> dict:
         problems.append("API_KEY 32–128 karakter olmalı")
     if not re.match(r"^[a-z][a-z0-9-]{0,63}$", cfg.get("FLOW", "")):
         problems.append("FLOW akış kodu olmalı")
-    if cfg["SOURCE"] == "postgres":
+    if cfg["SOURCE"] == "digest-only":
+        pass  # only --digest is used; no source needed
+    elif cfg["SOURCE"] == "postgres":
         if not cfg.get("POSTGRES_DSN"):
             problems.append("POSTGRES_DSN gerekli")
         if not cfg.get("QUERY_FILE") or not Path(cfg["QUERY_FILE"]).is_file():
@@ -80,7 +82,7 @@ def validate(values: dict) -> dict:
         if not cfg.get("JSON_FILE") or not Path(cfg["JSON_FILE"]).is_file():
             problems.append("JSON_FILE var olan bir dosya olmalı")
     else:
-        problems.append("SOURCE postgres veya json olmalı")
+        problems.append("SOURCE postgres, json veya digest-only olmalı")
     for key in ("WINDOW", "OVERLAP", "GRACE", "INTERVAL"):
         try:
             cfg[key + "_TD"] = parse_duration(cfg[key])
@@ -147,6 +149,7 @@ def main(argv=None) -> int:
     parser.add_argument("--config", help="key=value yapılandırma dosyası")
     parser.add_argument("--check", action="store_true", help="yapılandırmayı doğrula ve çık")
     parser.add_argument("--loop", action="store_true", help="INTERVAL aralığıyla sürekli çalış")
+    parser.add_argument("--digest", choices=["daily", "weekly"], help="rapor özetini şimdi gönder ve çık (mutabakat çalıştırmaz)")
     parser.add_argument("--version", action="store_true")
     args = parser.parse_args(argv)
     if args.version:
@@ -164,6 +167,14 @@ def main(argv=None) -> int:
         print("yapılandırma geçerli")
         return 0
     client = IntegraOpsClient(cfg["API_URL"], cfg["API_KEY"], VERSION)
+    if args.digest:
+        try:
+            result = client.send_digest(args.digest)
+        except ApiError as e:
+            log.error("özet gönderilemedi: %s", e)
+            return 1
+        log.info("özet kuyruğa alındı: %s dönem, %s alıcı", result["period"], result["recipients"])
+        return 0
     source = make_source(cfg)
     while True:
         try:

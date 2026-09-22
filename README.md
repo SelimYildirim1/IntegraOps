@@ -24,6 +24,7 @@ IntegraOps, farklı sistemlerden gelen iş olaylarını aynı işlem altında bi
 - V1.2: akış taslağı ve sürümleri, ileri tarihli etkinleşme, sürüm farkı, çalışma takvimleri, grup bazlı süreler, süre ihlali raporu.
 - Go aktarım ajanı (`agent/`): kaynak outbox ya da dizinden olayları taşır, kesintide bekletir, hız sınırlar, merkeze yaşam sinyali gönderir.
 - Python mutabakat servisi (`reconciler/`): kaynak işlemlerini IntegraOps ile karşılaştırır, hiç bildirilmemiş işlemleri ve eksik adımları bulur.
+- Raporlar: adım süreleri ve yüzdelikler, süre uyumu, alarm yanıt süreleri, tekrarlayan sorunlar, veri kalitesi, eğilim grafikleri, günlük/haftalık özet e-postası.
 
 ## Gerekenler
 
@@ -125,6 +126,7 @@ python3 scripts/verify_v1_1.py
 python3 scripts/verify_v1_2.py
 python3 scripts/verify_agent.py     # Go 1.25 gerektirir; yerel API'yi kısa süre durdurur
 python3 scripts/verify_reconciler.py # reconciler/.venv (pg8000) gerektirir
+python3 scripts/verify_reports.py
 ```
 
 Kesinti provası için ayrı, uygun yerel test zamanında:
@@ -215,6 +217,7 @@ Gerçek kaynak sistemin bağlanması için sözleşme `docs/entegrasyon-sozlesme
 - `docs/v1-2.md`: V1.2 akış sürümleme ve süre kuralları.
 - `docs/aktarim-ajani.md`: Go aktarım ajanının kaynak sözleşmesi, yapılandırması ve doğrulaması.
 - `docs/mutabakat.md`: Python mutabakat servisinin sorgu sözleşmesi, ayarları ve doğrulaması.
+- `docs/raporlar.md`: Rapor göstergeleri, özet e-postaları ve doğrulaması.
 - `docs/entegrasyon-sozlesmesi.md`: Gerçek kaynak sistem için olay, kimlik ve kuyruk kuralları.
 - `docs/izleme.md` ve `docs/canli-ortam.md`: Sistem sağlığı izleme ve canlı işletim rehberleri.
 - `IntegraOps_V1_00_Kurulum_ve_Test.md`: V1 modüllerinin ayrıntılı kurulum açıklaması.

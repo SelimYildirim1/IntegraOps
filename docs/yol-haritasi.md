@@ -2,7 +2,7 @@
 
 Bu belge projenin V1 kapanışından kurumsal ürüne kadar olan geliştirme planını ve her aşamanın güncel durumunu tutar. Aşamalar sırayla uygulanır. Bir aşama ancak kendi bitiş ölçütü karşılandığında tamamlanmış sayılır.
 
-**Son güncelleme:** 22 Eylül 2026 (V2 mutabakat servisi tamamlandı)
+**Son güncelleme:** 22 Eylül 2026 (V2 raporlama tamamlandı)
 
 ## Durum işaretleri
 
@@ -16,7 +16,7 @@ Bu belge projenin V1 kapanışından kurumsal ürüne kadar olan geliştirme pla
 
 ## Şu an neredeyiz
 
-**Aktif aşama:** V2 süre analizi ve raporlama (Aşama 10). Aşama 2, 3 ve 5 dış girdi bekliyor; V1.1, V1.2, Go ajanı ve mutabakat tamamlandı.
+**Aktif aşama:** V2 karmaşık süreçler (Aşama 11). Aşama 2, 3 ve 5 dış girdi bekliyor; V1.1, V1.2, Go ajanı, mutabakat ve raporlama tamamlandı.
 
 Aşama 1 tamamlandı. Aşama 3 ve 4'ün yerelde sınanabilen bütün kısımları tamamlandı; kalan görevler gerçek sunucu, alan adı ve SMTP bilgisine bağlı. Bu girdiler gelene kadar Aşama 2, 3 ve 5 için kullanıcı kararı gerekiyor:
 
@@ -269,18 +269,18 @@ Python'ın ilk bağımsız ürün bileşeni mutabakat servisidir. Bugün Python 
 
 ---
 
-## 10. V2 — Süre analizi, raporlama ve operasyon göstergeleri ⏳
+## 10. V2 — Süre analizi, raporlama ve operasyon göstergeleri ✅
 
 | Gösterge | Durum |
 |---|---|
-| Adım bazında gerçekleşme süreleri | ⏳ |
-| Süre hedeflerine uyum oranları | ⏳ |
-| En sık geciken veya hata veren adımlar | ⏳ |
-| Sistem, akış ve dönem karşılaştırmaları | ⏳ |
-| Alarmın açılmasından görülmesine ve çözülmesine kadar geçen süre | ⏳ |
-| Tekrarlayan sorunların listelenmesi | ⏳ |
-| Günlük ve haftalık raporlar | ⏳ |
-| Veri kalitesi göstergeleri: eksik olay, tutarsız zaman, geç bildirim oranları | ⏳ |
+| Adım bazında gerçekleşme süreleri | ✅ Ortanca, p90, p95, en uzun |
+| Süre hedeflerine uyum oranları | ✅ Genel, adım ve grup başına |
+| En sık geciken veya hata veren adımlar | ✅ Süre aşımı ve hata gruplaması |
+| Sistem, akış ve dönem karşılaştırmaları | ✅ Akış filtresi, grup dağılımı, günlük/haftalık eğilim |
+| Alarmın açılmasından görülmesine ve çözülmesine kadar geçen süre | ✅ Ortalama ve ortanca |
+| Tekrarlayan sorunların listelenmesi | ✅ 2+ alarm açılan işlemler |
+| Günlük ve haftalık raporlar | ✅ Zamanlanmış özet e-postası, anlık gönderim, Python komutu |
+| Veri kalitesi göstergeleri: eksik olay, tutarsız zaman, geç bildirim oranları | ✅ Mutabakat, `out_of_order`, geç ve ileri tarihli olaylar |
 
 **Teknoloji:**
 
@@ -290,6 +290,8 @@ Python'ın ilk bağımsız ürün bileşeni mutabakat servisidir. Bugün Python 
 - **Next.js:** İş kullanıcılarına yönelik grafik ve rapor ekranları.
 
 **Bitiş ölçütü:** Kullanıcı hangi sürecin ne sıklıkta ve ne kadar geciktiğini güvenilir biçimde görür.
+
+**Doğrulama:** `scripts/verify_reports.py` 24 kontrol. Ayrıntı `docs/raporlar.md`.
 
 ---
 
@@ -402,3 +404,4 @@ Yeterli geçmiş veri oluşursa Python üzerinden anomali tespiti, olası neden 
 | 22 Eylül 2026 | V1.2 | Akış sürümleme, takvim, grup süreleri, ihlal raporu: migration 005, 34 kontrol geçti. **V1.2 tamamlandı** |
 | 22 Eylül 2026 | Aşama 8 | Go aktarım ajanı, yaşam sinyali (migration 006), 21 kontrol geçti. **Aşama 8 tamamlandı** |
 | 22 Eylül 2026 | Aşama 9 | Python mutabakat servisi, sözleşme uçları (migration 007), 18 kontrol geçti. **Aşama 9 tamamlandı** |
+| 22 Eylül 2026 | Aşama 10 | Rapor göstergeleri, eğilim, özet e-postaları (migration 008), 24 kontrol geçti. **Aşama 10 tamamlandı** |

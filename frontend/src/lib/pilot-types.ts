@@ -30,6 +30,25 @@ export type ReconciliationDiscrepancies = {
     first_seen_at: string; last_seen_at: string; resolved_at: string | null; seen_count: number; known: boolean }[];
   total: number; page: number; pageSize: number; counts: { open: number; missing_transactions: number };
 };
+export type ReportOverview = {
+  from: string; to: string; flow: string | null; test: string;
+  totals: { transactions: number; completed: number; failed: number; in_progress: number };
+  alarms: { overdue: number; failed: number; still_open: number; mtta_seconds: number | null; mtta_p50_seconds: number | null;
+    mttr_seconds: number | null; mttr_p50_seconds: number | null; acknowledged: number; resolved: number };
+  compliance: { measured: number; breached: number; out_of_order: number };
+  steps: { flow: string; step_code: string; measured: number; breached: number; compliance: number; p50: number; p90: number; p95: number; max: number; allowance: number }[];
+  topFailed: { flow: string; step_code: string; error: string; count: number; transactions: number }[];
+  topOverdue: { flow: string; step_code: string; count: number; avg_late_seconds: number | null }[];
+  recurring: { flow: string; business_id: string; alarms: number; failed: number; overdue: number; last_opened_at: string }[];
+  byGroup: { group: string; transactions: number; measured: number; breached: number; compliance: number | null }[];
+  quality: { events: number; late_events: number; lag_p95_seconds: number | null; future_events: number; out_of_order_steps: number;
+    open_discrepancies: number; discrepancies_found: number };
+};
+export type ReportTrend = { period: string; buckets: { start: string; transactions: number; measured: number; breached: number; alarms: number; p50_seconds: number | null }[] };
+export type DigestInfo = {
+  settings: { digest_period: "none" | "daily" | "weekly"; digest_hour: number; digest_timezone: string; updated_at: string | null };
+  sent: { period: string; period_from: string; period_to: string; recipients: number; sent_at: string; triggered_by: string }[];
+};
 export type RetentionInfo = {
   policy: { finished_transaction_days: number | null; notification_days: number | null; audit_days: number | null; updated_at: string | null };
   runs: { ran_at: string; transactions_deleted: number; deliveries_deleted: number; audit_deleted: number }[];

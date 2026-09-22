@@ -36,7 +36,7 @@ public static class PilotEndpoints
             var path = c.Request.Path.Value;
             // Ingest keys may read their own reconciliation history to resume from the last window.
             var allowed = (HttpMethods.IsGet(c.Request.Method) && (actor.Scope is "legacy" or "read" || path == "/api/v1/reconciliation/runs"))
-                || (write && path is "/api/v1/events" or "/api/v1/agents/heartbeat" or "/api/v1/reconciliation/runs" && actor.Scope is "legacy" or "ingest")
+                || (write && path is "/api/v1/events" or "/api/v1/agents/heartbeat" or "/api/v1/reconciliation/runs" or "/api/v1/reports/digest" && actor.Scope is "legacy" or "ingest")
                 || (write && path == "/api/v1/reconciliation/lookup" && actor.Scope is "legacy" or "read" or "ingest")
                 || (write && path == "/api/v1/flows" && actor.Scope == "legacy");
             if (rule?.SessionOnly == true || !allowed) throw new PilotHttpException(403, "Bu anahtarın bu işlem için yetkisi yok.");
@@ -132,6 +132,24 @@ public static class PilotEndpoints
         MapOperations(app, projectApi);
         MapVersions(projectApi);
         MapReconciliation(projectApi);
+        MapReports(projectApi);
+    }
+
+    /// <summary>V2 analytics: overview, trends, digest settings and on-demand digest.</summary>
+    private static void MapReports(RouteGroupBuilder projectApi)
+    {
+        projectApi.MapGet("/reports/overview", async (HttpContext c, PostgresReportQueries r, string? from, string? to, string? flow, string? test, CancellationToken ct)
+            => Results.Ok(await r.Overview(Actor(c).ProjectId, from, to, flow, test, ct))).WithMetadata(new ProjectRule("owner,operator,viewer", SessionOnly: false));
+        projectApi.MapGet("/reports/trend", async (HttpContext c, PostgresReportQueries r, string? flow, string? test, string? period, int? buckets, CancellationToken ct)
+            => Results.Ok(await r.Trend(Actor(c).ProjectId, flow, test, period, buckets, ct))).WithMetadata(new ProjectRule("owner,operator,viewer", SessionOnly: false));
+        projectApi.MapGet("/reports/digest", async (HttpContext c, PostgresReportQueries r, CancellationToken ct)
+            => Results.Ok(await r.DigestSettings(Actor(c).ProjectId, ct))).WithMetadata(new ProjectRule("owner"));
+        projectApi.MapPut("/reports/digest", async (HttpContext c, DigestSettingsInput input, PostgresReportQueries r, CancellationToken ct) =>
+        { await r.SetDigestSettings(Actor(c), input, ct); return Results.NoContent(); }).WithMetadata(new ProjectRule("owner"));
+        // Owners (panel) and ingest keys (the Python digest command) may trigger a digest now.
+        projectApi.MapPost("/reports/digest", async (HttpContext c, DigestRequest input, PostgresReportQueries r, CancellationToken ct)
+            => Results.Ok(await r.SendDigest(Actor(c).ProjectId, input.Period, Actor(c).UserId is null ? "api" : "manual", Actor(c).UserId, ct)))
+            .WithMetadata(new ProjectRule("owner", SessionOnly: false));
     }
 
     /// <summary>V2: service contract for the Python reconciler and panel queries.</summary>

@@ -72,3 +72,7 @@ class IntegraOpsClient:
             if row["flow"] == flow and row.get("oldest"):
                 oldest = datetime.fromisoformat(str(row["oldest"]).replace("Z", "+00:00"))
         return last, oldest
+
+    def send_digest(self, period: str) -> dict:
+        """Asks IntegraOps to compose and queue the daily/weekly report digest now."""
+        return self._call("POST", "/api/v1/reports/digest", {"period": period})

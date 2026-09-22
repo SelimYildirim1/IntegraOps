@@ -2,7 +2,7 @@ namespace IntegraOps.Domain;
 
 /// <summary>Realised duration of a completed step, measured from the previous completed step.</summary>
 public sealed record StepStat(string Code, DateTimeOffset StartedAt, DateTimeOffset CompletedAt,
-    long ElapsedSeconds, int AllowanceSeconds, bool Breached);
+    long ElapsedSeconds, int AllowanceSeconds, bool Breached, bool OutOfOrder = false);
 
 public static class StepStats
 {
@@ -16,8 +16,10 @@ public static class StepStats
             if (step.Observation != "completed" || previous.Observation != "completed"
                 || step.OccurredAt is not { } done || previous.OccurredAt is not { } started || step.MaxDelaySeconds is not { } allowance)
                 continue;
-            var elapsed = flow.ElapsedSeconds(started, done);
-            result.Add(new StepStat(step.Code, started, done, elapsed, allowance, elapsed > allowance));
+            // A step reported earlier than its predecessor is a source-time inconsistency, not a fast step.
+            var outOfOrder = done < started;
+            var elapsed = outOfOrder ? 0 : flow.ElapsedSeconds(started, done);
+            result.Add(new StepStat(step.Code, started, done, elapsed, allowance, elapsed > allowance, outOfOrder));
         }
         return result;
     }

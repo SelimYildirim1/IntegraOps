@@ -64,6 +64,7 @@ public static class PilotSecurity
         services.AddSingleton<PostgresFlowVersionStore>();
         services.AddSingleton<IConfigurationReader, ConfigurationReader>();
         services.AddSingleton<PostgresReconciliationStore>();
+        services.AddSingleton<PostgresReportQueries>();
         return services;
     }
 }
