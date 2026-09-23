@@ -386,6 +386,7 @@ public sealed class PostgresSecurityStore(NpgsqlDataSource source, IDataProtecti
         CREATE TEMP TABLE doomed_projects ON COMMIT DROP AS SELECT id FROM projects WHERE organization_id=@o;
         CREATE TEMP TABLE doomed_tx ON COMMIT DROP AS SELECT id FROM transactions WHERE project_id IN (SELECT id FROM doomed_projects);
         CREATE TEMP TABLE doomed_flows ON COMMIT DROP AS SELECT id FROM flows WHERE project_id IN (SELECT id FROM doomed_projects);
+        DELETE FROM ai_analyses WHERE project_id IN (SELECT id FROM doomed_projects);
         DELETE FROM alarm_notes WHERE alarm_id IN (SELECT id FROM alarms WHERE project_id IN (SELECT id FROM doomed_projects));
         DELETE FROM alarm_events WHERE alarm_id IN (SELECT id FROM alarms WHERE project_id IN (SELECT id FROM doomed_projects));
         DELETE FROM notification_deliveries WHERE channel_id IN (SELECT id FROM notification_channels WHERE project_id IN (SELECT id FROM doomed_projects));

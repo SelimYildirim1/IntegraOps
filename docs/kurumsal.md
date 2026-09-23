@@ -26,7 +26,7 @@ Yeni proje, kullanıcının sahip ya da yönetici olduğu ilk organizasyonda aç
 
 Sistem yöneticisi müşteri bazında sınırları geçersiz kılar (`organization_limits`). Kullanım `usage_daily` tablosunda gün bazında sayılır: her `POST /events` isteği olay sayacını artırır; sınır aşımı **429**, askıdaki ya da deneme süresi dolmuş hesap **402** döner ve red sayacına yazılır. Organizasyon sayfası son 30 günü ve bugünün kullanımını gösterir; proje ve kullanıcı sınırları proje oluştururken ve üye eklerken **403** ile uygulanır.
 
-Ödeme sağlayıcı bağlı değildir; plan değişikliği sistem yöneticisi tarafından `/admin` sayfasından elle yapılır ve `plan_note` alanına sözleşme/fatura notu yazılır. Deneme süresi bitmeden 3 gün önce ve bittiği gün sahiplere e-posta gider (worker, saatlik).
+Yapay zekâ asistanı isteğe bağlı eklentidir: deneme ve kurumsal planda dahil, diğer planlarda sistem yöneticisi müşteri bazında açar (`docs/yapay-zeka.md`). Ödeme sağlayıcı bağlı değildir; plan değişikliği sistem yöneticisi tarafından `/admin` sayfasından elle yapılır ve `plan_note` alanına sözleşme/fatura notu yazılır. Deneme süresi bitmeden 3 gün önce ve bittiği gün sahiplere e-posta gider (worker, saatlik).
 
 ## Hesap açılışı ve başlangıç
 

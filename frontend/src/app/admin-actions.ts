@@ -7,7 +7,7 @@ import type { ActionState } from "@/lib/pilot-types";
 export async function adminAction(_previous: ActionState, data: FormData): Promise<ActionState> {
   const field = (name: string) => String(data.get(name) ?? "");
   const op = field("op"); const id = field("id");
-  const withId = ["member-remove", "key-revoke", "channel-toggle", "ack", "retry", "assign", "note", "view-delete", "calendar-delete", "calendar-update", "connection-delete", "key-rotate"].includes(op);
+  const withId = ["member-remove", "key-revoke", "channel-toggle", "ack", "retry", "assign", "note", "view-delete", "calendar-delete", "calendar-update", "connection-delete", "key-rotate", "ai-analyze", "ai-feedback"].includes(op);
   if (withId && !/^[0-9a-f-]{36}$/i.test(id)) return { message: "Kayıt kimliği geçersiz." };
   const days = (name: string) => { const v = field(name).trim(); return v === "" ? null : /^\d{1,4}$/.test(v) ? Number(v) : NaN; };
   let result: { key?: string; secret?: string; invited?: boolean } | undefined;
@@ -43,6 +43,8 @@ export async function adminAction(_previous: ActionState, data: FormData): Promi
       case "retry": await api(`/deliveries/${id}/retry`, "POST"); break;
       case "assign": await api(`/alarms/${id}/assign`, "POST", { userId: field("userId") }); message = field("userId") ? "Sorumlu güncellendi." : "Sorumlu kaldırıldı."; break;
       case "note": await api(`/alarms/${id}/notes`, "POST", { body: field("body") }); message = "Not eklendi."; break;
+      case "ai-analyze": await api(`/alarms/${id}/ai-analyses`, "POST"); message = "İnceleme hazırlandı."; break;
+      case "ai-feedback": await api(`/ai/analyses/${id}/feedback`, "PUT", { rating: field("rating"), comment: field("comment") || null }); message = "Geri bildiriminiz kaydedildi."; break;
       case "view-save": await api("/views", "POST", { kind: field("kind"), name: field("name"), query: field("query") }); message = "Görünüm kaydedildi."; break;
       case "view-delete": await api(`/views/${id}`, "DELETE"); message = "Görünüm silindi."; break;
       case "calendar-create": case "calendar-update": {

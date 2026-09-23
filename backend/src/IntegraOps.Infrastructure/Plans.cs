@@ -21,6 +21,14 @@ public static class Plans
         ["trial"] = "Deneme", ["starter"] = "Başlangıç", ["business"] = "İşletme", ["enterprise"] = "Kurumsal", ["suspended"] = "Askıda",
     };
 
+    /// <summary>AI assistant add-on by plan; trial includes it so customers can evaluate it.</summary>
+    public static readonly IReadOnlyDictionary<string, bool> AiDefaults = new Dictionary<string, bool>
+    {
+        ["trial"] = true, ["starter"] = false, ["business"] = false, ["enterprise"] = true, ["suspended"] = false,
+    };
+
+    public static bool AiEnabled(string plan, bool? overrideValue) => overrideValue ?? AiDefaults.GetValueOrDefault(plan, false);
+
     public static PlanLimits Effective(string plan, int? maxProjects, int? maxUsers, int? maxEvents, int? maxRetention)
     {
         var d = Defaults.TryGetValue(plan, out var limits) ? limits : Defaults["trial"];

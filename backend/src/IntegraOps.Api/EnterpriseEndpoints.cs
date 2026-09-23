@@ -107,7 +107,7 @@ public static class EnterpriseEndpoints
             return await next(invocation);
         });
         admin.MapGet("/organizations", async (PostgresOrganizationStore s, CancellationToken ct) => Results.Ok(await s.AdminOrganizations(ct)));
-        admin.MapGet("/plans", () => Results.Ok(Plans.Defaults.Select(p => new { code = p.Key, name = Plans.Names[p.Key], limits = p.Value })));
+        admin.MapGet("/plans", () => Results.Ok(Plans.Defaults.Select(p => new { code = p.Key, name = Plans.Names[p.Key], limits = p.Value, ai = Plans.AiDefaults[p.Key] })));
         admin.MapPut("/organizations/{id:guid}/plan", async (HttpContext c, Guid id, PlanInput input, PostgresOrganizationStore s, CancellationToken ct) =>
         { await s.SetPlan(User(c).Id, id, input, ct); return Results.NoContent(); });
     }

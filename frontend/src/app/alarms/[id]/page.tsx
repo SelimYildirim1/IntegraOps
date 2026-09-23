@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { api, apiMessage, getAccess, getAssignable } from "@/lib/api";
-import type { AlarmDetail, Assignee } from "@/lib/pilot-types";
+import type { AiAnalysis, AiStatus, AlarmDetail, Assignee } from "@/lib/pilot-types";
+import AiAnalysisPanel from "@/components/ai-analysis";
 import { eventNames, deliveryNames } from "@/lib/pilot-types";
 import { alarmKind, alarmState } from "@/lib/alarms";
 import { Message, PageHead, Time } from "@/components/ui";
@@ -14,10 +15,13 @@ const deliveryTone: Record<string, string> = { sent: "good", dead: "bad", sendin
 
 export default async function AlarmDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params; let result: AlarmDetail; let canAct = false; let assignees: Assignee[] = []; let me = "";
+  let aiStatus: AiStatus | null = null; let analyses: AiAnalysis[] = [];
   if (!/^[0-9a-f-]{36}$/i.test(id)) return <Message title="Alarm bulunamadı" description="Bağlantıyı kontrol edin." href="/alarms" action="Alarmlara dön" />;
   try {
     const access = await getAccess(); canAct = access.role !== "viewer"; me = access.userId;
     [result, assignees] = await Promise.all([api<AlarmDetail>(`/alarms/${id}`), canAct ? getAssignable() : Promise.resolve([])]);
+    // AI panel is optional: a failure here must not hide the alarm itself.
+    [aiStatus, analyses] = await Promise.all([api<AiStatus>("/ai/status").catch(() => null), api<AiAnalysis[]>(`/alarms/${id}/ai-analyses`).catch(() => [])]);
   } catch (e) { return <Message title="Alarm yüklenemedi" description={apiMessage(e)} href="/alarms" action="Alarmlara dön" />; }
   const a = result.alarm;
   const s = alarmState(a);
@@ -74,6 +78,8 @@ export default async function AlarmDetailPage({ params }: { params: Promise<{ id
         </ol></div>
       </section>
     </div>
+
+    <AiAnalysisPanel alarmId={id} status={aiStatus} analyses={analyses} canAct={canAct} />
 
     <section className="surface">
       <div className="surface-head"><div><h2>Notlar</h2><p>İnceleme ve müdahale kayıtları. Notlar alarmla birlikte saklanır ve silinmez.</p></div>

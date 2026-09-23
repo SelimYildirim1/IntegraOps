@@ -113,6 +113,7 @@ public sealed class RetentionSweeper(NpgsqlDataSource source, IConfiguration con
             DELETE FROM notification_deliveries WHERE event_id IN (SELECT e.id FROM alarm_events e JOIN alarms a ON a.id=e.alarm_id WHERE a.transaction_id IN (SELECT id FROM doomed));
             DELETE FROM alarm_events WHERE alarm_id IN (SELECT id FROM alarms WHERE transaction_id IN (SELECT id FROM doomed));
             DELETE FROM alarm_notes WHERE alarm_id IN (SELECT id FROM alarms WHERE transaction_id IN (SELECT id FROM doomed));
+            DELETE FROM ai_analyses WHERE subject_kind='alarm' AND subject_id IN (SELECT id FROM alarms WHERE transaction_id IN (SELECT id FROM doomed));
             DELETE FROM alarms WHERE transaction_id IN (SELECT id FROM doomed);
             DELETE FROM transaction_delays WHERE transaction_id IN (SELECT id FROM doomed);
             DELETE FROM transaction_step_stats WHERE transaction_id IN (SELECT id FROM doomed);
