@@ -16,7 +16,7 @@ Bu belge projenin V1 kapanışından kurumsal ürüne kadar olan geliştirme pla
 
 ## Şu an neredeyiz
 
-**Aktif aşama:** Yol haritasının yerelde yapılabilen bütün aşamaları tamamlandı. Aşama 14 için kapasite ölçüm aracı, toplu yayın ve kopya desteği hazır; sonraki ölçek adımları ölçülen ihtiyaca göre `docs/olcek.md` sırasıyla alınır. Aşama 2, 3 ve 5 dış girdi (kaynak sistem, sunucu, pilot ekibi), Aşama 13 ödeme sağlayıcısı bekliyor.
+**Aktif aşama:** Yol haritasının yerelde yapılabilen bütün aşamaları tamamlandı. Aşama 14 için kapasite ölçüm aracı, toplu yayın ve kopya desteği hazır; sonraki ölçek adımları ölçülen ihtiyaca göre `docs/olcek.md` sırasıyla alınır. Aşama 2, 3 ve 5 dış girdi (kaynak sistem, sunucu, pilot ekibi), Aşama 13 ödeme sağlayıcısı, Aşama 15 yapay zekâ modeli seçimini bekliyor.
 
 Aşama 1 tamamlandı. Aşama 3 ve 4'ün yerelde sınanabilen bütün kısımları tamamlandı; kalan görevler gerçek sunucu, alan adı ve SMTP bilgisine bağlı. Bu girdiler gelene kadar Aşama 2, 3 ve 5 için kullanıcı kararı gerekiyor:
 
@@ -383,6 +383,25 @@ Yeterli geçmiş veri oluşursa Python üzerinden anomali tespiti, olası neden 
 
 ---
 
+## 15. Yapay zekâ desteği 🟡 (altyapı hazır, model seçimi bekleniyor)
+
+Ürün önerisi, bağlantı noktaları ve kurulum ayrıntısı `docs/yapay-zeka.md` içinde.
+
+| Görev | Durum |
+|---|---|
+| Model bağımsız katman, kapalı varsayılan, yerel doğrulama sağlayıcısı | ✅ `AiAssistant.cs`, `Ai__Provider` |
+| Kanıta dayalı alarm inceleme (kanıt toplama, çıktı denetimi, kayıt) | ✅ `PostgresAiStore`, migration 013 |
+| Faydalı / hatalı / eksik geri bildirimi | ✅ `ai_feedback`, alarm detay sayfası |
+| Günlük sınır, zaman aşımı, denetim kaydı, saklama ve silme | ✅ |
+| Plan eklentisi: müşteri bazında açma/kapama, temel işlevler bağımsız | ✅ `ai_enabled`, migration 014 |
+| Gerçek model adaptörü | ⛔ Model seçimi bekleniyor |
+| Günlük operasyon özeti, sorun grupları, operasyona sor | ⏳ Tablo ve bağlantı noktaları hazır |
+| Gecikme riski tahmini, entegrasyon yardımcısı | ⏳ Veri birikimi ve bağlayıcılarla |
+
+**Doğrulama:** `scripts/verify_ai.py` 25 kontrol (`AI_PROVIDER=fake`), `AiTests` 5 birim testi.
+
+---
+
 ## Teknolojilerin görev dağılımı
 
 | Teknoloji | Projedeki görevi | Devreye giriş |
@@ -396,6 +415,7 @@ Yeterli geçmiş veri oluşursa Python üzerinden anomali tespiti, olası neden 
 | Go | Kaynak tarafında tekrar kullanılabilir aktarım ajanı | Mevcut: `agent/` dizini |
 | Python | Mutabakat ve dönemsel analiz servisi | Mevcut: `reconciler/`; yardımcı betikler |
 | SQLite | Gerekirse Go ajanının yerel kalıcı tamponu | Ajan tasarımında ihtiyaç olursa |
+| Dil modeli hizmeti | Kanıta dayalı alarm açıklaması, özet ve soru yorumlama | Altyapı hazır; model seçilince |
 | Redis / Kubernetes | Önbellek veya büyük dağıtımın yönetimi | Ölçülen ihtiyaç oluşursa |
 
 ## İlerleme günlüğü
@@ -418,3 +438,4 @@ Yeterli geçmiş veri oluşursa Python üzerinden anomali tespiti, olası neden 
 | 22 Eylül 2026 | Aşama 10 | Rapor göstergeleri, eğilim, özet e-postaları (migration 008), 24 kontrol geçti. **Aşama 10 tamamlandı** |
 | 22 Eylül 2026 | Aşama 11 | Paralel/koşullu/isteğe bağlı adımlar, atlama ve iptal (migration 009), 24 kontrol geçti. **Aşama 11 tamamlandı** |
 | 22 Eylül 2026 | Aşama 12 | Bağlantılar, eşleme şablonları, anahtar yenileme, Python/Node SDK (migration 010), 32 kontrol geçti. **Aşama 12 tamamlandı** |
+| 23 Eylül 2026 | Aşama 15 | Yapay zekâ altyapısı: model bağımsız katman, kanıta dayalı alarm inceleme, geri bildirim, plan eklentisi (migration 013–014), 25 kontrol geçti. Model seçimi bekleniyor |

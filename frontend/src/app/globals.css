@@ -421,3 +421,6 @@ td.late { color: var(--bad); }
 .checklist li.done span:last-child { color: var(--ink-2); text-decoration: line-through; }
 .usage-bars { display: flex; align-items: flex-end; gap: 3px; height: 64px; }
 .usage-bars span { flex: 1; min-width: 4px; background: var(--signal); border-radius: 2px 2px 0 0; opacity: 0.85; }
+.ai-list { margin: 6px 0 14px; padding-left: 20px; display: grid; gap: 6px; font-size: 14px; }
+.ai-list .badge { margin-left: 4px; font-size: 11px; }
+.surface-body h3 { font-size: 13px; margin: 14px 0 4px; color: var(--ink-2); }

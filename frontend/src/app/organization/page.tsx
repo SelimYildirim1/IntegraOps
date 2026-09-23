@@ -62,6 +62,7 @@ export default async function OrganizationPage() {
             <tr><th>Kullanıcı sınırı</th><td>{limitText(org.limits.maxUsers)}</td></tr>
             <tr><th>Günlük olay sınırı</th><td>{limitText(org.limits.maxEventsPerDay)}</td></tr>
             <tr><th>En uzun saklama</th><td>{org.limits.maxRetentionDays === null ? "Sınırsız" : org.limits.maxRetentionDays + " gün"}</td></tr>
+            <tr><th>Yapay zekâ asistanı</th><td>{org.aiEnabled ? "Planda dahil" : "Planda yok"}</td></tr>
             {org.planNote && <tr><th>Not</th><td>{org.planNote}</td></tr>}
           </tbody></table>
           <h3>Günlük olaylar (30 gün)</h3>

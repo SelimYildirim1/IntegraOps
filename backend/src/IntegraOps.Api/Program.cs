@@ -17,6 +17,7 @@ builder.Services.ConfigureHttpJsonOptions(options =>
     options.SerializerOptions.Converters.Add(new JsonStringEnumConverter(JsonNamingPolicy.CamelCase, allowIntegerValues: false)));
 builder.Services.AddProblemDetails();
 builder.Services.AddPilot(builder.Configuration);
+builder.Services.AddAi(builder.Configuration);
 builder.Services.AddRateLimiter(options =>
 {
     options.RejectionStatusCode = 429;
@@ -118,6 +119,7 @@ app.MapPost("/api/v1/bootstrap/projects", async (HttpContext context, CreateProj
 var projectApi = app.MapGroup("/api/v1").AddEndpointFilter(PilotEndpoints.ProjectFilter);
 PilotEndpoints.Map(app, projectApi, BootstrapValid);
 EnterpriseEndpoints.Map(app, projectApi, app.Configuration);
+AiEndpoints.Map(projectApi);
 await app.Services.GetRequiredService<PostgresOrganizationStore>()
     .SyncSystemAdmins((app.Configuration["SystemAdmin:Emails"] ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries), CancellationToken.None);
 

@@ -55,6 +55,10 @@ services:
       SystemAdmin__Emails: ${SYSTEM_ADMIN_EMAILS:-}
       Signup__Enabled: ${SIGNUP_ENABLED:-false}
       Exports__Path: /var/lib/integraops/exports
+      Ai__Provider: ${AI_PROVIDER:-none}
+      Ai__Model: ${AI_MODEL:-}
+      Ai__ApiKey: ${AI_API_KEY:-}
+      Ai__DailyLimitPerProject: ${AI_DAILY_LIMIT:-200}
     volumes: ["protection_keys:/var/lib/integraops/keys", "exports_data:/var/lib/integraops/exports"]
     depends_on: { migrate: { condition: service_completed_successfully } }
   worker:

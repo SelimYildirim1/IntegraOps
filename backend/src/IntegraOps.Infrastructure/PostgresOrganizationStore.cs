@@ -12,7 +12,7 @@ public sealed record OrganizationInput(string? Name);
 public sealed record OrganizationMemberInput(string? Email, string? Role);
 public sealed record GroupInput(string? Name, List<Guid>? Projects, List<GroupMemberInput>? Members);
 public sealed record GroupMemberInput(string? Email, string? Role);
-public sealed record PlanInput(string? Plan, int? MaxProjects, int? MaxUsers, int? MaxEventsPerDay, int? MaxRetentionDays, string? Note, int? TrialDays);
+public sealed record PlanInput(string? Plan, int? MaxProjects, int? MaxUsers, int? MaxEventsPerDay, int? MaxRetentionDays, string? Note, int? TrialDays, bool? AiEnabled = null);
 public sealed record RequestContext(string? Ip, string? UserAgent);
 
 /// <summary>Organizations, their members, project groups, plans, limits, usage and the onboarding checklist.</summary>
@@ -65,7 +65,7 @@ public sealed class PostgresOrganizationStore(NpgsqlDataSource source, IConfigur
         var o = (await Rows(c, null, """
             SELECT o.id,o.name,o.plan,o.trial_ends_at,o.plan_updated_at,o.plan_note,o.sso_issuer,o.sso_client_id,o.sso_domain,o.sso_required,
                 o.deletion_requested_at,o.deletion_scheduled_at,o.created_at,
-                l.max_projects,l.max_users,l.max_events_per_day,l.max_retention_days,
+                l.max_projects,l.max_users,l.max_events_per_day,l.max_retention_days,l.ai_enabled,
                 (SELECT count(*) FROM projects p WHERE p.organization_id=o.id) projects,
                 (SELECT count(DISTINCT user_id) FROM (SELECT m.user_id FROM organization_members m WHERE m.organization_id=o.id
                     UNION SELECT pm.user_id FROM project_members pm JOIN projects p ON p.id=pm.project_id WHERE p.organization_id=o.id
@@ -96,7 +96,7 @@ public sealed class PostgresOrganizationStore(NpgsqlDataSource source, IConfigur
             id = o["id"], name = o["name"], plan = o["plan"], planName = Plans.Names.GetValueOrDefault((string)o["plan"]!, (string)o["plan"]!),
             trialEndsAt = trialEnds, trialExpired = (string)o["plan"]! == "trial" && trialEnds is { } t && t < DateTime.UtcNow,
             planUpdatedAt = o["plan_updated_at"], planNote = o["plan_note"], myRole = o["my_role"],
-            limits, counts = new { projects = o["projects"], users = o["users"], eventsToday = today?["events"] ?? 0L },
+            limits, aiEnabled = Plans.AiEnabled((string)o["plan"]!, o["ai_enabled"] as bool?), counts = new { projects = o["projects"], users = o["users"], eventsToday = today?["events"] ?? 0L },
             usage, members, projects, groups,
             sso = new { issuer = o["sso_issuer"], clientId = o["sso_client_id"], domain = o["sso_domain"], required = o["sso_required"], configured = o["sso_issuer"] is not null },
             deletion = new { requestedAt = o["deletion_requested_at"], scheduledAt = o["deletion_scheduled_at"] },
@@ -302,17 +302,26 @@ public sealed class PostgresOrganizationStore(NpgsqlDataSource source, IConfigur
 
     // ---------- system administration ----------
 
+    /// <summary>Whether the AI assistant is part of this organization's plan (or overridden by the system administrator).</summary>
+    public static async Task<bool> AiEnabledFor(NpgsqlConnection c, Guid org, CancellationToken ct)
+    {
+        var r = (await Rows(c, null, "SELECT o.plan,l.ai_enabled FROM organizations o LEFT JOIN organization_limits l ON l.organization_id=o.id WHERE o.id=@o", ct, ("o", org)))[0];
+        return Plans.AiEnabled((string)r["plan"]!, r["ai_enabled"] as bool?);
+    }
+
     public async Task<object> AdminOrganizations(CancellationToken ct)
     {
         await using var c = await source.OpenConnectionAsync(ct);
-        return await Rows(c, null, """
-            SELECT o.id,o.name,o.plan,o.trial_ends_at,o.plan_updated_at,o.plan_note,o.created_at,o.deletion_scheduled_at,
+        var rows = await Rows(c, null, """
+            SELECT o.id,o.name,o.plan,o.trial_ends_at,o.plan_updated_at,o.plan_note,o.created_at,o.deletion_scheduled_at,l.ai_enabled ai_override,
                 (SELECT count(*) FROM projects p WHERE p.organization_id=o.id) projects,
                 (SELECT count(*) FROM organization_members m WHERE m.organization_id=o.id) members,
                 (SELECT coalesce(sum(events),0) FROM usage_daily u WHERE u.organization_id=o.id AND u.day>=current_date-29) events_30d,
                 (SELECT u.email FROM organization_members m JOIN app_users u ON u.id=m.user_id WHERE m.organization_id=o.id AND m.role='owner' ORDER BY m.created_at LIMIT 1) owner_email
-            FROM organizations o ORDER BY o.created_at DESC LIMIT 500
+            FROM organizations o LEFT JOIN organization_limits l ON l.organization_id=o.id ORDER BY o.created_at DESC LIMIT 500
             """, ct);
+        foreach (var r in rows) r["ai_enabled"] = Plans.AiEnabled((string)r["plan"]!, r["ai_override"] as bool?);
+        return rows;
     }
 
     public async Task SetPlan(Guid admin, Guid org, PlanInput input, CancellationToken ct)
@@ -327,11 +336,11 @@ public sealed class PostgresOrganizationStore(NpgsqlDataSource source, IConfigur
                 trial_ends_at=CASE WHEN @p='trial' THEN clock_timestamp()+make_interval(days => @td) ELSE trial_ends_at END WHERE id=@o
             """, ct, ("p", input.Plan), ("n", input.Note), ("td", input.TrialDays ?? Plans.TrialDays), ("o", org));
         await Run(c, tx, """
-            INSERT INTO organization_limits(organization_id,max_projects,max_users,max_events_per_day,max_retention_days)
-            VALUES(@o,CAST(@a AS integer),CAST(@b AS integer),CAST(@c AS integer),CAST(@d AS integer))
+            INSERT INTO organization_limits(organization_id,max_projects,max_users,max_events_per_day,max_retention_days,ai_enabled)
+            VALUES(@o,CAST(@a AS integer),CAST(@b AS integer),CAST(@c AS integer),CAST(@d AS integer),CAST(@ai AS boolean))
             ON CONFLICT(organization_id) DO UPDATE SET max_projects=EXCLUDED.max_projects,max_users=EXCLUDED.max_users,
-                max_events_per_day=EXCLUDED.max_events_per_day,max_retention_days=EXCLUDED.max_retention_days,updated_at=clock_timestamp()
-            """, ct, ("o", org), ("a", Check(input.MaxProjects, "Proje sınırı")), ("b", Check(input.MaxUsers, "Kullanıcı sınırı")),
+                max_events_per_day=EXCLUDED.max_events_per_day,max_retention_days=EXCLUDED.max_retention_days,ai_enabled=EXCLUDED.ai_enabled,updated_at=clock_timestamp()
+            """, ct, ("o", org), ("ai", input.AiEnabled), ("a", Check(input.MaxProjects, "Proje sınırı")), ("b", Check(input.MaxUsers, "Kullanıcı sınırı")),
             ("c", Check(input.MaxEventsPerDay, "Günlük olay sınırı")), ("d", Check(input.MaxRetentionDays, "Saklama sınırı")));
         await Security(c, tx, admin, org, "org.plan", new RequestContext(null, null), $"{input.Plan ?? "-"} {input.Note ?? ""}".Trim(), ct);
         await tx.CommitAsync(ct);

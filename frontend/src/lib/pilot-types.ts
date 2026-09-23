@@ -77,6 +77,20 @@ export type AlarmDetail = {
     available_at: string; last_error: string | null; sent_at: string | null }[];
   notes: { id: string; body: string; created_at: string; author: string }[];
 };
+export type AiStatus = { enabled: boolean; configured: boolean; planEnabled: boolean; provider: string; model: string; dailyLimit: number; usedToday: number };
+export type AiEvidence = { id: string; type: string; [key: string]: unknown };
+export type AiAnalysis = {
+  id: string; created_at: string; provider: string; model: string; status: "completed" | "failed"; error: string | null;
+  duration_ms: number; requested_by: string | null; my_rating: AiRating | null; useful_count: number; critical_count: number;
+  evidence: AiEvidence[];
+  result: { summary: string; cause: string; findings: { text: string; evidence: string[]; grounded: boolean }[];
+    checks: string[]; unknowns: string[] } | null;
+};
+export type AiRating = "useful" | "wrong" | "incomplete";
+export const aiCauseNames: Record<string, string> = {
+  delay: "Gecikme", source_error: "Kaynak sistem hatası", notification: "Bildirim ulaşmadı", unknown: "Belirlenemedi",
+};
+export const aiRatingNames: Record<AiRating, string> = { useful: "Faydalı", wrong: "Hatalı", incomplete: "Eksik" };
 export type Operations = {
   counts: { outbox_pending: number; oldest_outbox_at: string | null; events_pending: number;
     notifications_pending: number; notifications_dead: number; worker_seen_at: string | null; checked_at: string };
@@ -96,7 +110,7 @@ export const orgRoleNames: Record<OrgRole, string> = { owner: "Sahip", admin: "Y
 export type PlanLimits = { maxProjects: number | null; maxUsers: number | null; maxEventsPerDay: number | null; maxRetentionDays: number | null };
 export type Organization = {
   id: string; name: string; plan: string; planName: string; trialEndsAt: string | null; trialExpired: boolean; planUpdatedAt: string | null; planNote: string;
-  myRole: OrgRole | null; limits: PlanLimits; counts: { projects: number; users: number; eventsToday: number };
+  myRole: OrgRole | null; limits: PlanLimits; aiEnabled: boolean; counts: { projects: number; users: number; eventsToday: number };
   usage: { day: string; events: number; rejected: number }[];
   members: { id: string; name: string; email: string; role: OrgRole; created_at: string; mfa_enabled: boolean; last_login_at: string | null }[];
   projects: { id: string; name: string; created_at: string }[];
@@ -111,8 +125,8 @@ export type SecurityInfo = { mfaEnabled: boolean; systemAdmin: boolean; events: 
 export type AuditRow = { id: number; action: string; target: string; created_at: string; project: string; actor: string | null };
 export type DataExport = { id: string; state: "pending" | "running" | "ready" | "failed"; size_bytes: number | null; error: string | null; created_at: string; completed_at: string | null; expires_at: string | null; requested_by: string | null };
 export type AdminOrganization = { id: string; name: string; plan: string; trial_ends_at: string | null; plan_updated_at: string | null; plan_note: string; created_at: string;
-  deletion_scheduled_at: string | null; projects: number; members: number; events_30d: number; owner_email: string | null };
-export type PlanInfo = { code: string; name: string; limits: PlanLimits };
+  deletion_scheduled_at: string | null; projects: number; members: number; events_30d: number; owner_email: string | null; ai_enabled: boolean };
+export type PlanInfo = { code: string; name: string; limits: PlanLimits; ai: boolean };
 export const securityKinds: Record<string, string> = {
   "login.password": "Parola ile giriş", "login.mfa": "İki adımlı giriş", "login.sso": "Tek oturum açma ile giriş", "login.failed": "Başarısız giriş",
   "login.sso_required": "Parola girişi reddedildi (SSO zorunlu)", "mfa.enabled": "İki adımlı doğrulama açıldı", "mfa.disabled": "İki adımlı doğrulama kapatıldı",

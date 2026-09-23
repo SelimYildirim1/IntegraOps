@@ -61,7 +61,8 @@ export async function planAction(_previous: ActionState, data: FormData): Promis
   const limit = (name: string) => { const v = field(name); return v === "" ? null : /^\d{1,9}$/.test(v) ? Number(v) : NaN; };
   const limits = { maxProjects: limit("maxProjects"), maxUsers: limit("maxUsers"), maxEventsPerDay: limit("maxEventsPerDay"), maxRetentionDays: limit("maxRetentionDays") };
   if (Object.values(limits).some(Number.isNaN)) return { message: "Sınırlar tam sayı olmalı; boş bırakılan alan plan varsayılanını kullanır." };
-  try { await api(`/admin/organizations/${id}/plan`, "PUT", { plan: field("plan") || null, note: field("note") || null, ...limits }, false); }
+  const ai = field("aiEnabled"); const aiEnabled = ai === "" ? null : ai === "true";
+  try { await api(`/admin/organizations/${id}/plan`, "PUT", { plan: field("plan") || null, note: field("note") || null, aiEnabled, ...limits }, false); }
   catch (e) { return { message: apiMessage(e) }; }
   revalidatePath("/admin");
   return { ok: true, message: "Plan ve sınırlar kaydedildi." };
