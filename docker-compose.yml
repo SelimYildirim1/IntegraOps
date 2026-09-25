@@ -64,10 +64,22 @@ services:
       Signup__Enabled: ${SIGNUP_ENABLED:-true}
       Sso__AllowHttp: "true"   # local only: lets the verification script run a plain-http OpenID provider
       Exports__Path: /var/lib/integraops/exports
-      Ai__Provider: ${AI_PROVIDER:-none}   # none = kapalı; fake = yerel doğrulama; gerçek model seçilince adaptör eklenir
+      # Yapay zekâ (docs/yapay-zeka.md, IntegraOps_Gemini_Ucretsiz_Test_Rehberi.md): none = kapalı; fake = yerel doğrulama; gemini = Google Gemini Developer API
+      Ai__Provider: ${AI_PROVIDER:-none}
+      Ai__Enabled: ${AI_ENABLED:-true}
       Ai__Model: ${AI_MODEL:-}
       Ai__ApiKey: ${AI_API_KEY:-}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      Ai__TestMode: ${AI_TEST_MODE:-false}
+      Ai__FreeTierOnly: ${AI_FREE_TIER_ONLY:-true}
+      Ai__FreeTierConfirmed: ${AI_FREE_TIER_CONFIRMED:-false}
       Ai__DailyLimitPerProject: ${AI_DAILY_LIMIT:-200}
+      Ai__MaxOutputTokens: ${AI_MAX_OUTPUT_TOKENS:-1200}
+      Ai__TimeoutSeconds: ${AI_TIMEOUT_SECONDS:-60}
+      Ai__MaxConcurrentRequests: ${AI_MAX_CONCURRENT_REQUESTS:-4}
+      Ai__MinSecondsBetweenRequests: ${AI_MIN_SECONDS_BETWEEN_REQUESTS:-0}
+      Ai__MaxRequestBytes: ${AI_MAX_REQUEST_BYTES:-60000}
+      Ai__CacheTtlSeconds: ${AI_CACHE_TTL_SECONDS:-0}
     extra_hosts:
       - "host.docker.internal:host-gateway"
     volumes:
@@ -91,6 +103,7 @@ services:
       Notifications__WebhookOrigins: ${WEBHOOK_ORIGINS:-http://webhook:8080}
       Notifications__PrivateWebhookOrigins: ${PRIVATE_WEBHOOK_ORIGINS:-http://webhook:8080}
       Notifications__RetryBaseSeconds: 2
+      Panel__BaseUrl: ${PANEL_BASE_URL:-http://localhost:3000}   # alarm iletilerindeki "Panelde aç" bağlantısı
       Outbox__BatchSize: ${OUTBOX_BATCH_SIZE:-50}
       EventConsumer__Concurrency: ${EVENT_CONSUMER_CONCURRENCY:-1}
       Smtp__Host: mailpit

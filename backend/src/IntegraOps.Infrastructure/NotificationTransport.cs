@@ -33,16 +33,34 @@ public sealed class NotificationTransport : IDisposable
     private static HashSet<string> ParseOrigins(string? values) => (values ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
         .Select(x => new Uri(x).GetLeftPart(UriPartial.Authority)).ToHashSet(StringComparer.OrdinalIgnoreCase);
 
-    public Uri ValidateTarget(string value)
+    /// <summary>Hosts of the chat services' incoming webhooks; accepted over https without being listed in the origin allowlist.</summary>
+    public static bool ChatHost(string kind, string host) => kind switch
     {
+        "slack" => host.Equals("hooks.slack.com", StringComparison.OrdinalIgnoreCase),
+        "teams" => host.EndsWith(".webhook.office.com", StringComparison.OrdinalIgnoreCase)
+            || host.EndsWith(".logic.azure.com", StringComparison.OrdinalIgnoreCase)
+            || host.EndsWith(".powerplatform.com", StringComparison.OrdinalIgnoreCase),
+        _ => false,
+    };
+
+    public Uri ValidateTarget(string value, string kind = "webhook")
+    {
+        var label = kind switch { "slack" => "Slack webhook", "teams" => "Teams webhook", _ => "Webhook" };
         if (!Uri.TryCreate(value, UriKind.Absolute, out var uri) || !string.IsNullOrEmpty(uri.UserInfo)
             || !string.IsNullOrEmpty(uri.Fragment) || uri.Scheme is not ("https" or "http"))
-            throw new PilotHttpException(400, "Webhook adresi geçersiz.");
+            throw new PilotHttpException(400, $"{label} adresi geçersiz.");
         var origin = uri.GetLeftPart(UriPartial.Authority);
+        if (uri.Scheme == "https" && ChatHost(kind, uri.Host)) return uri;
         if (!origins.Contains(origin) || (uri.Scheme != "https" && !privateOrigins.Contains(origin)))
-            throw new PilotHttpException(400, "Webhook hedefi sunucunun izin verilen adresleri arasında değil.");
+            throw new PilotHttpException(400, kind is "slack" or "teams"
+                ? $"{label} adresi {(kind == "slack" ? "hooks.slack.com" : "*.webhook.office.com ya da *.logic.azure.com")} üzerinde olmalı ya da sunucunun izin listesinde bulunmalı."
+                : "Webhook hedefi sunucunun izin verilen adresleri arasında değil.");
         return uri;
     }
+
+    private bool AllowedOrigin(Uri uri) =>
+        (uri.Scheme == "https" && (ChatHost("slack", uri.Host) || ChatHost("teams", uri.Host)))
+        || (origins.Contains(uri.GetLeftPart(UriPartial.Authority)) && (uri.Scheme == "https" || privateOrigins.Contains(uri.GetLeftPart(UriPartial.Authority))));
 
     public static bool PublicAddress(IPAddress address)
     {
@@ -60,7 +78,8 @@ public sealed class NotificationTransport : IDisposable
 
     private async ValueTask<Stream> Connect(SocketsHttpConnectionContext context, CancellationToken ct)
     {
-        var uri = ValidateTarget(context.InitialRequestMessage.RequestUri!.AbsoluteUri);
+        var uri = context.InitialRequestMessage.RequestUri!;
+        if (!AllowedOrigin(uri)) throw new DeliveryException("webhook_address_rejected", true);
         var allowPrivate = privateOrigins.Contains(uri.GetLeftPart(UriPartial.Authority));
         var addresses = await Dns.GetHostAddressesAsync(context.DnsEndPoint.Host, ct);
         if (addresses.Length == 0 || (!allowPrivate && addresses.Any(a => !PublicAddress(a))))
@@ -92,20 +111,29 @@ public sealed class NotificationTransport : IDisposable
             request.Headers.Add("X-IntegraOps-Delivery", delivery.ToString());
             request.Headers.Add("X-IntegraOps-Time", timestamp);
             request.Headers.Add("X-IntegraOps-Signature", "sha256=" + signature);
-            using var response = await client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, timeout.Token);
-            if (!response.IsSuccessStatusCode)
-                throw new DeliveryException("webhook_http_" + (int)response.StatusCode,
-                    (int)response.StatusCode is >= 300 and < 500 && (int)response.StatusCode is not (408 or 425 or 429));
+            await Post(request, "webhook", timeout.Token);
             return;
         }
-        using var payload = JsonDocument.Parse(body);
-        var data = payload.RootElement;
-        string Field(string name) => data.TryGetProperty(name, out var value) && value.ValueKind != JsonValueKind.Null ? value.ToString() : "—";
-        var change = Field("event") == "opened" ? "Alarm açıldı" : "Alarm kapandı";
-        var reason = Field("alarm_kind") == "overdue" ? "Beklenen bildirim süresinde gelmedi" : "Kaynak sistem hata bildirdi";
-        var emailBody = $"{change}\n\n{reason}\nİşlem: {Field("transaction_id")}\nAkış: {Field("flow")}\nAdım: {Field("step_code")}\n"
-            + $"Beklenen son zaman: {Field("deadline_at")}\nAçıklama: {Field("error")}\n\nAlarm: {Field("alarm_id")}\nBildirim: {delivery}";
-        await SendMail(target, $"IntegraOps · {change} · {Field("transaction_id")}", emailBody, delivery, timeout.Token);
+        var message = AlarmMessage.Parse(body, configuration["Panel:BaseUrl"]);
+        if (kind is "slack" or "teams")
+        {
+            // Chat webhooks authenticate by URL; the message is rendered for the service, the raw body is not forwarded.
+            var uri = ValidateTarget(target, kind);
+            using var request = new HttpRequestMessage(HttpMethod.Post, uri)
+            { Content = new StringContent(kind == "slack" ? message.Slack() : message.Teams(), Encoding.UTF8, "application/json") };
+            request.Headers.Add("X-IntegraOps-Delivery", delivery.ToString());
+            await Post(request, kind, timeout.Token);
+            return;
+        }
+        await SendMail(target, $"IntegraOps · {message.Title} · {message.TransactionId}", message.EmailBody(delivery), delivery, timeout.Token);
+    }
+
+    private async Task Post(HttpRequestMessage request, string kind, CancellationToken ct)
+    {
+        using var response = await client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, ct);
+        if (!response.IsSuccessStatusCode)
+            throw new DeliveryException($"{kind}_http_" + (int)response.StatusCode,
+                (int)response.StatusCode is >= 300 and < 500 && (int)response.StatusCode is not (408 or 425 or 429));
     }
 
     /// <summary>Plain-text e-mail through the configured SMTP relay; used for alarms and account messages.</summary>

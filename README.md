@@ -28,6 +28,7 @@ IntegraOps, farklı sistemlerden gelen iş olaylarını aynı işlem altında bi
 - Karmaşık süreçler: paralel aşamalar, isteğe bağlı ve gruba bağlı koşullu adımlar, `skipped` ve `cancelled` bildirimleri.
 - Bağlantılar: kaynak sistem kayıtları, sunucu tarafı eşleme şablonları, anahtar yenileme, istemci sürüm takibi, Python ve Node gönderici kütüphaneleri (`sdk/`).
 - Kurumsal: organizasyonlar ve proje grupları, planlar ve günlük kullanım sınırları, hesap açılışı ve deneme süresi, iki adımlı doğrulama (TOTP), OpenID Connect ile kurumsal giriş, güvenlik olayları, veri dışa aktarma ve silme süreci, sistem yönetimi sayfası.
+- Dalga 1 (değer görünürlüğü): Slack ve Microsoft Teams bildirim kanalları, adım başına çalışma talimatı ve kaynak sistem bağlantısı (alarm iletisinde ve panelde), 6 sektör akış şablonu, tek tıkla örnek veri üretimi ve silme, herkese açık OpenAPI belgesi (`/openapi.yaml`) ve panelde Geliştirici sayfası. Ayrıntı `docs/dalga-1.md`.
 
 ## Gerekenler
 
@@ -133,6 +134,7 @@ python3 scripts/verify_reports.py
 python3 scripts/verify_v2_flows.py
 python3 scripts/verify_connections.py # Node 20+ ve sdk/typescript derlemesi gerekir
 python3 scripts/verify_enterprise.py  # kurumsal: kayıt, planlar, TOTP, SSO (süreç içi sağlayıcı, openssl gerekir), dışa aktarım
+python3 scripts/verify_wave1.py       # Dalga 1: Slack/Teams kanalları, adım talimatları, sektör şablonları, örnek veri, OpenAPI
 python3 scripts/load_test.py --transactions 500 --concurrency 16  # kapasite ölçümü; sonuçlar docs/olcek.md
 ```
 

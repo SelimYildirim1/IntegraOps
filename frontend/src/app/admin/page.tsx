@@ -1,7 +1,8 @@
 import { api, apiMessage } from "@/lib/api";
 import type { AdminOrganization, PlanInfo, SecurityInfo } from "@/lib/pilot-types";
-import { Message, number, PageHead, Time } from "@/components/ui";
+import { Empty, Message, number, PageHead, Time } from "@/components/ui";
 import ActionForm from "@/components/action-form";
+import PagedTable from "@/components/paged-table";
 import { planAction } from "@/app/organization/actions";
 
 export const dynamic = "force-dynamic";
@@ -11,13 +12,13 @@ export default async function AdminPage() {
   let orgs: AdminOrganization[], plans: PlanInfo[];
   try {
     const security = await api<SecurityInfo>("/me/security", "GET", undefined, false);
-    if (!security.systemAdmin) return <Message title="Sistem yönetimi" description="Bu sayfa yalnızca sistem yöneticilerine açıktır. Yetki SYSTEM_ADMIN_EMAILS ayarıyla ya da veritabanından verilir." href="/organization" action="Organizasyona dön" />;
+    if (!security.systemAdmin) return <Message title="Sistem yönetimi" description="Bu sayfa yalnızca sistem yöneticilerine açıktır. Yetki SYSTEM_ADMIN_EMAILS ayarıyla ya da veritabanından verilir." href="/organization" action="Organizasyona dön" icon="lock" />;
     [orgs, plans] = await Promise.all([api<AdminOrganization[]>("/admin/organizations", "GET", undefined, false), api<PlanInfo[]>("/admin/plans", "GET", undefined, false)]);
-  } catch (e) { return <Message title="Sistem yönetimi yüklenemedi" description={apiMessage(e)} />; }
+  } catch (e) { return <Message title="Sistem yönetimi yüklenemedi" description={apiMessage(e)} icon="alert" />; }
   const names = Object.fromEntries(plans.map(p => [p.code, p.name]));
 
   return <>
-    <PageHead title="Sistem yönetimi" lede="Bütün müşteri organizasyonları, planları ve kullanım sınırları. Ödeme sağlayıcı bağlanana kadar plan değişikliği burada elle yapılır." />
+    <PageHead icon="shield" title="Sistem yönetimi" lede="Bütün müşteri organizasyonları, planları ve kullanım sınırları." />
     <section className="surface">
       <div className="surface-head"><div><h2>Planlar</h2><p>Boş sınır sınırsız demektir. Müşteri bazında sınır aşağıdaki formla değiştirilir.</p></div></div>
       <div className="table-wrap"><table><thead><tr><th>Plan</th><th>Proje</th><th>Kullanıcı</th><th>Günlük olay</th><th>Saklama</th><th>Yapay zekâ</th></tr></thead><tbody>
@@ -27,12 +28,13 @@ export default async function AdminPage() {
     </section>
     <section className="surface">
       <div className="surface-head"><div><h2>Organizasyonlar</h2></div><span className="count">{orgs.length} organizasyon</span></div>
-      <div className="table-wrap"><table><thead><tr><th>Organizasyon</th><th>Plan</th><th>Proje</th><th>Üye</th><th>30 günlük olay</th><th>Yapay zekâ</th><th>Oluşturma</th></tr></thead><tbody>
-        {orgs.map(o => <tr key={o.id}><td>{o.name}<small>{o.owner_email ?? "sahip yok"}</small></td>
+      <PagedTable unit="organizasyon"
+        head={<tr><th>Organizasyon</th><th>Plan</th><th>Proje</th><th>Üye</th><th>30 günlük olay</th><th>Yapay zekâ</th><th>Oluşturma</th></tr>}
+        rows={orgs.map(o => <tr key={o.id}><td>{o.name}<small>{o.owner_email ?? "sahip yok"}</small></td>
           <td><span className={`badge ${planTone[o.plan] ?? "info"}`}>{names[o.plan] ?? o.plan}</span>{o.plan === "trial" && o.trial_ends_at && <small>bitiş: <Time value={o.trial_ends_at} /></small>}{o.deletion_scheduled_at && <small className="muted">silinecek: <Time value={o.deletion_scheduled_at} /></small>}</td>
           <td>{o.projects}</td><td>{o.members}</td><td>{number(o.events_30d)}</td><td>{o.ai_enabled ? <span className="badge good">Açık</span> : <span className="badge">Kapalı</span>}</td><td><Time value={o.created_at} /></td></tr>)}
-      </tbody></table></div>
-      <div className="surface-body" style={{ borderTop: "1px solid var(--line-2)" }}>
+        empty={<Empty icon="building" title="Organizasyon yok" />} />
+      <div className="surface-body">
         <h3>Plan ve sınır ata</h3>
         <ActionForm action={planAction} label="Kaydet">
           <div className="form-grid">

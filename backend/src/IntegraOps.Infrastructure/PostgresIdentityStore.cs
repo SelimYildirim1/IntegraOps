@@ -84,19 +84,23 @@ public sealed class PostgresIdentityStore(NpgsqlDataSource source)
             return new { mfaRequired = true, challenge };
         }
         await Run(c, tx, "UPDATE app_users SET last_login_at=clock_timestamp() WHERE id=@u", ct, ("u", id));
-        var token = await CreateSession(c, tx, id, ct);
-        await PostgresOrganizationStore.Security(c, tx, id, null, "login.password", ctx, null, ct);
+        var token = await CreateSession(c, tx, id, ct, input.Remember);
+        await PostgresOrganizationStore.Security(c, tx, id, null, "login.password", ctx, input.Remember ? "beni hatırla" : null, ct);
         await tx.CommitAsync(ct);
-        return new { token, expiresIn = 28800, user = new SessionUser(id, email, (string)u["name"]!, (bool)u["is_system_admin"]!, false) };
+        return new { token, expiresIn = SessionLifetime(input.Remember), user = new SessionUser(id, email, (string)u["name"]!, (bool)u["is_system_admin"]!, false) };
     }
 
-    internal static async Task<string> CreateSession(NpgsqlConnection c, NpgsqlTransaction? tx, Guid user, CancellationToken ct)
+    /// <summary>Default session lifetime; "remember me" keeps the session for <see cref="RememberedSessionSeconds"/>.</summary>
+    public const int SessionSeconds = 8 * 3600, RememberedSessionSeconds = 30 * 24 * 3600;
+    public static int SessionLifetime(bool remember) => remember ? RememberedSessionSeconds : SessionSeconds;
+
+    internal static async Task<string> CreateSession(NpgsqlConnection c, NpgsqlTransaction? tx, Guid user, CancellationToken ct, bool remember = false)
     {
         var token = Token();
         await Run(c, tx, """
             DELETE FROM user_sessions WHERE expires_at<=clock_timestamp();
-            INSERT INTO user_sessions(token_hash,user_id,expires_at) VALUES(@h,@u,clock_timestamp()+interval '8 hours')
-            """, ct, ("h", Hash(token)), ("u", user));
+            INSERT INTO user_sessions(token_hash,user_id,expires_at) VALUES(@h,@u,clock_timestamp()+make_interval(secs => @s))
+            """, ct, ("h", Hash(token)), ("u", user), ("s", SessionLifetime(remember)));
         return token;
     }
 

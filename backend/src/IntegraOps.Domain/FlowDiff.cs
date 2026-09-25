@@ -24,6 +24,10 @@ public static class FlowDiff
             if (old.Name != step.Name) changes.Add(new StepChange("renamed", step.Code, $"{old.Name} → {step.Name}"));
             if (old.MaxDelaySeconds != step.MaxDelaySeconds)
                 changes.Add(new StepChange("allowance", step.Code, $"{Allowance(old.MaxDelaySeconds)} → {Allowance(step.MaxDelaySeconds)}"));
+            if (old.Instructions != step.Instructions)
+                changes.Add(new StepChange("instructions", step.Code, step.Instructions.Length == 0 ? "talimat kaldırıldı" : old.Instructions.Length == 0 ? "talimat eklendi" : "talimat değişti"));
+            if (old.LinkTemplate != step.LinkTemplate)
+                changes.Add(new StepChange("link", step.Code, $"{(old.LinkTemplate.Length == 0 ? "—" : old.LinkTemplate)} → {(step.LinkTemplate.Length == 0 ? "—" : step.LinkTemplate)}"));
             var oldOverrides = old.Overrides ?? new Dictionary<string, int>();
             var newOverrides = step.Overrides ?? new Dictionary<string, int>();
             foreach (var group in oldOverrides.Keys.Union(newOverrides.Keys).OrderBy(g => g, StringComparer.Ordinal))

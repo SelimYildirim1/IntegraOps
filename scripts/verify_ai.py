@@ -1,5 +1,5 @@
-"""AI assistance checks: status, evidence-based alarm analysis, evidence ids and ungrounded findings,
-stored history, feedback, role and key restrictions, project isolation.
+"""AI assistance checks: status, evidence-based alarm and transaction analysis, evidence ids and ungrounded findings,
+stored history, stale marking, feedback, role and key restrictions, project isolation.
 
 Run against the local stack started with AI_PROVIDER=fake (no model is called):
   AI_PROVIDER=fake docker compose up -d --build api && python3 scripts/verify_ai.py
@@ -82,6 +82,28 @@ def main():
     history = require(api(f"/alarms/{alarm}/ai-analyses", auth=owner))
     check("İnceleme geçmişi saklanır", len(history) == 1 and history[0]["id"] == analysis["id"])
     check("Kullanım sayacı artar", require(api("/ai/status", auth=owner))["usedToday"] == 1)
+    check("Durum ucu deneme profili alanlarını bildirir", {"testMode", "reason", "cacheSeconds", "minSecondsBetweenRequests", "nextAllowedAt"} <= set(status))
+
+    # --- Transaction analysis: the operator asks about a transaction, the server picks the evidence (alarms, steps, events) ---
+    tx1 = f"INV-{suffix}-1"
+    status_code, tx_analysis = api(f"/flows/invoice/transactions/{tx1}/ai-analyses", {}, owner)
+    check("İşlem incelemesi başlatılır (201)", status_code == 201 and tx_analysis["status"] == "completed" and tx_analysis["subject_kind"] == "transaction")
+    tx_types = {e["type"] for e in tx_analysis["evidence"]}
+    check("İşlem kanıtı işlem, adım, olay ve alarmı içerir; alarm bildirimlerini içermez",
+        {"transaction", "step", "event", "alarm"} <= tx_types and "delivery" not in tx_types and "similar_alarms" not in tx_types)
+    check("İşlem incelemesi güncel bağlam için eski değildir", tx_analysis["stale"] is False)
+    check("İşlem geçmişi ayrı listelenir", require(api(f"/flows/invoice/transactions/{tx1}/ai-analyses", auth=owner))[0]["id"] == tx_analysis["id"])
+    check("Alarm geçmişi işlem incelemesini içermez", len(require(api(f"/alarms/{alarm}/ai-analyses", auth=owner))) == 1)
+    check("Bilinmeyen işlem 404 döner", api(f"/flows/invoice/transactions/YOK-{suffix}/ai-analyses", {}, owner)[0] == 404)
+    send(tx1, "invoice")  # a new event changes the evidence: the earlier answer must show as stale, not as current
+    deadline = time.monotonic() + 60
+    latest_tx = None
+    while time.monotonic() < deadline:
+        latest_tx = require(api(f"/flows/invoice/transactions/{tx1}/ai-analyses", auth=owner))[0]
+        if latest_tx["stale"]:
+            break
+        time.sleep(1)
+    check("Yeni olay gelince önceki açıklama eski olarak işaretlenir", latest_tx is not None and latest_tx["stale"] is True)
 
     check("Geçersiz değerlendirme reddedilir", api(f"/ai/analyses/{analysis['id']}/feedback", {"rating": "harika"}, owner, "PUT")[0] == 400)
     require(api(f"/ai/analyses/{analysis['id']}/feedback", {"rating": "incomplete", "comment": "Kuyruk bilgisi yok"}, owner, "PUT"))

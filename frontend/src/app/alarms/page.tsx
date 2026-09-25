@@ -3,11 +3,15 @@ import { api, apiMessage, getAccess, getFlows, getSavedViews } from "@/lib/api";
 import type { AlarmPage, SavedView } from "@/lib/pilot-types";
 import type { Flow } from "@/lib/types";
 import { testLabels } from "@/lib/types";
-import { dateInput, Message, number, PageHead, Time } from "@/components/ui";
+import { dateInput, Empty, Explain, Message, number, PageHead, Time } from "@/components/ui";
 import RefreshControls from "@/components/refresh-controls";
 import SavedViews from "@/components/saved-views";
+import Pager from "@/components/pager";
+import Icon from "@/components/icons";
 import { alarmKind, alarmState } from "@/lib/alarms";
 import { apiFilters } from "@/lib/filters";
+import { Columns } from "@/components/charts";
+import type { ReportTrend } from "@/lib/pilot-types";
 
 export const dynamic = "force-dynamic";
 
@@ -24,12 +28,15 @@ export default async function AlarmsPage({ searchParams }: { searchParams: Promi
   const assigned = ["me", "none"].includes(str("assigned")) ? str("assigned") : "";
   const filters = { state, flow, search, from, to, test, assigned };
   const query = new URLSearchParams(Object.entries(filters).filter(([k, v]) => v && !(k === "state" && v === "open") && !(k === "test" && v === "exclude"))).toString();
-  let result: AlarmPage; let flows: Flow[]; let views: SavedView[]; let canExport = false;
+  let result: AlarmPage; let flows: Flow[]; let views: SavedView[]; let canExport = false; let trend: ReportTrend | null = null;
   try {
-    [result, flows, views, canExport] = await Promise.all([
+    [result, flows, views, canExport, trend] = await Promise.all([
       api<AlarmPage>("/alarms?" + new URLSearchParams({ ...apiFilters(filters), page })), getFlows(), getSavedViews("alarms"),
-      getAccess().then(a => a.role !== "viewer")]);
-  } catch (e) { return <Message title="Alarmlar yüklenemedi" description={apiMessage(e)} />; }
+      getAccess().then(a => a.role !== "viewer"),
+      api<ReportTrend>("/reports/trend?" + new URLSearchParams({ flow, test, period: "day", buckets: "30" })).catch(() => null)]);
+  } catch (e) { return <Message title="Alarmlar yüklenemedi" description={apiMessage(e)} icon="alert" />; }
+  const dayLabel = (iso: string) => new Intl.DateTimeFormat("tr-TR", { day: "2-digit", month: "2-digit", timeZone: "Europe/Istanbul" }).format(new Date(iso));
+  const trendAlarms = trend?.buckets.reduce((a, b) => a + b.alarms, 0) ?? 0;
   const flowNames = new Map(flows.map(f => [f.code, f.name]));
   const href = (p: number) => "/alarms?" + new URLSearchParams({ ...filters, page: String(p) });
   const totalPages = Math.max(1, Math.ceil(result.total / result.pageSize));
@@ -37,14 +44,21 @@ export default async function AlarmsPage({ searchParams }: { searchParams: Promi
   const filtered = Boolean(query);
 
   return <>
-    <PageHead title="Alarmlar" lede="Süresi aşılan adımlar ve kaynak sistemin bildirdiği hatalar. Eksik adım bildirilince alarm kendiliğinden kapanır.">
-      {canExport && <a className="button secondary" href={`/export/alarms?${query}`}>CSV indir</a>}
+    <PageHead icon="bell" title="Alarmlar" lede="Süresi aşılan adımlar ve kaynak sistemin bildirdiği hatalar.">
+      {canExport && <a className="button secondary" href={`/export/alarms?${query}`}><Icon name="download" />CSV indir</a>}
       <RefreshControls />
     </PageHead>
+    {trend && trend.buckets.length > 1 && <div className="trend-card">
+      <div className="trend-head">
+        <div><h2>Son 30 gün</h2><p>Günlük açılan alarm sayısı.</p></div>
+        <div className="trend-stats"><div className="trend-stat"><i style={{ background: "var(--chart-bad)" }} /><div><strong>{number(trendAlarms)}</strong><span>açılan alarm</span></div></div></div>
+      </div>
+      <Columns height={110} series={[{ name: "Açılan alarm", tone: "bad" }]} points={trend.buckets.map(b => ({ label: dayLabel(b.start), values: [b.alarms] }))} />
+    </div>}
     <section className="surface">
       <form className="filters" action="/alarms">
-        <div className="field"><label htmlFor="a-search">İşlem numarası</label>
-          <input id="a-search" name="search" defaultValue={search} maxLength={128} placeholder="ORDER-10092" /></div>
+        <div className="field search"><label htmlFor="a-search">İşlem numarası</label>
+          <div className="control"><Icon name="search" /><input id="a-search" name="search" defaultValue={search} maxLength={128} placeholder="ORDER-10092" /></div></div>
         <div className="field"><label htmlFor="a-state">Durum</label><select id="a-state" name="state" defaultValue={state}>
           <option value="open">Açık alarmlar</option><option value="resolved">Kapanan alarmlar</option><option value="all">Tümü</option></select></div>
         <div className="field"><label htmlFor="a-flow">Akış</label><select id="a-flow" name="flow" defaultValue={flow}>
@@ -55,28 +69,28 @@ export default async function AlarmsPage({ searchParams }: { searchParams: Promi
         <div className="field"><label htmlFor="a-to">Açılış bitişi</label><input id="a-to" name="to" type="date" defaultValue={to} /></div>
         <div className="field"><label htmlFor="a-test">Test verisi</label><select id="a-test" name="test" defaultValue={test}>
           {Object.entries(testLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></div>
-        <button className="button secondary" type="submit">Uygula</button>
-        {filtered && <Link className="reset" href="/alarms" prefetch={false}>Temizle</Link>}
+        <button className="button secondary" type="submit"><Icon name="filter" />Uygula</button>
+        {filtered && <Link className="reset" href="/alarms" prefetch={false}><Icon name="x" size={14} />Temizle</Link>}
       </form>
       <SavedViews kind="alarms" views={views} basePath="/alarms" currentQuery={query} />
-      <div className="table-wrap"><table><thead><tr><th>İşlem</th><th>Akış</th><th>Alarm</th><th>Beklenen adım</th><th>Sorumlu</th><th>Açılış</th><th>Durum</th></tr></thead><tbody>
+      {result.items.length > 0 && <div className="table-wrap"><table><thead><tr><th>İşlem</th><th>Akış</th><th>Alarm</th><th>Beklenen adım</th><th>Sorumlu</th><th>Açılış</th><th>Durum</th></tr></thead><tbody>
         {result.items.map(a => { const s = alarmState(a); return <tr key={a.id}>
           <td><Link className="ident" href={`/alarms/${a.id}`} prefetch={false}>{a.business_id}</Link>{a.is_test && <span className="badge test">Test</span>}</td>
-          <td>{flowNames.get(a.flow) ?? a.flow}<small className="mono">{a.flow}</small></td>
+          <td>{flowNames.get(a.flow) ?? a.flow}</td>
           <td>{alarmKind(a.kind)}</td>
           <td className="mono">{a.step_code}</td>
           <td>{a.assigned_name ?? <span className="muted">—</span>}</td>
           <td className="nowrap"><Time value={a.opened_at} /></td>
           <td><span className={`badge ${s.tone}`}>{s.label}</span></td>
         </tr>; })}
-      </tbody></table></div>
-      {result.items.length === 0 && <div className="empty"><h3>{stateLabel ? `Şu anda ${stateLabel} alarm yok` : "Alarm yok"}</h3>
-        <p>{state === "open" && !filtered ? "Bütün beklenen adımlar zamanında bildirilmiş. Süre aşımı ya da hata oluşursa burada görünür." : "Seçilen filtrede kayıt bulunmuyor."}</p></div>}
-      <div className="pagination"><span>{number(result.total)} alarm, sayfa {result.page} / {number(totalPages)}</span>
-        <nav aria-label="Sayfalama">
-          {result.page > 1 && <Link className="button secondary small" href={href(result.page - 1)} prefetch={false}>Önceki</Link>}
-          {result.page * result.pageSize < result.total && <Link className="button secondary small" href={href(result.page + 1)} prefetch={false}>Sonraki</Link>}
-        </nav></div>
+      </tbody></table></div>}
+      {result.items.length === 0 && <Empty icon="check" title={stateLabel ? `Şu anda ${stateLabel} alarm yok` : "Alarm yok"}>
+        {state === "open" && !filtered ? "Bütün beklenen adımlar zamanında bildirilmiş. Süre aşımı ya da hata oluşursa burada görünür." : "Seçilen filtrede kayıt bulunmuyor."}</Empty>}
+      <Pager page={result.page} totalPages={totalPages} total={result.total} pageSize={result.pageSize} unit="alarm" href={href} />
     </section>
+    <Explain>
+      <p>Bir adım tanınan sürede bildirilmezse süre aşımı alarmı, kaynak sistem hata bildirirse hata alarmı açılır.</p>
+      <p>Eksik adım sonradan bildirilince ya da işlem iptal edilince alarm kendiliğinden kapanır. Gördüm işareti alarmı kapatmaz.</p>
+    </Explain>
   </>;
 }

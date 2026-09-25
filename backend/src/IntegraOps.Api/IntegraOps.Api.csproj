@@ -1,6 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk.Web">
   <ItemGroup>
     <PackageReference Include="OpenTelemetry.Instrumentation.AspNetCore" />
+    <EmbeddedResource Include="openapi.yaml" />
     <ProjectReference Include="../IntegraOps.Infrastructure/IntegraOps.Infrastructure.csproj" />
   </ItemGroup>
 </Project>

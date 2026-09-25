@@ -64,10 +64,12 @@ export type Connection = {
 export type ConnectionTemplate = { code: string; name: string; description: string; template: Record<string, string>; sample: unknown };
 export type MappingTestResult = { events: { index: number; event: { eventId: string; flow: string; transactionId: string; step: string; status: string; occurredAt: string }; problems: string[] }[] };
 export type Channel = { id: string; name: string; kind: string; target: string; enabled: boolean };
+export const channelKindNames: Record<string, string> = { email: "E-posta", webhook: "Webhook", slack: "Slack", teams: "Microsoft Teams" };
 export type Alarm = {
   id: string; flow: string; business_id: string; kind: string; step_code: string; error: string | null;
   opened_at: string; deadline_at: string | null; resolved_at: string | null; resolution: string | null;
   acknowledged_at: string | null; assigned_to: string | null; assigned_at: string | null; assigned_name: string | null; is_test: boolean;
+  step_name?: string | null; instructions?: string; link?: string | null;
 };
 export type AlarmPage = { items: Alarm[]; total: number; page: number; pageSize: number };
 export type AlarmDetail = {
@@ -77,18 +79,23 @@ export type AlarmDetail = {
     available_at: string; last_error: string | null; sent_at: string | null }[];
   notes: { id: string; body: string; created_at: string; author: string }[];
 };
-export type AiStatus = { enabled: boolean; configured: boolean; planEnabled: boolean; provider: string; model: string; dailyLimit: number; usedToday: number };
+export type AiStatus = {
+  enabled: boolean; configured: boolean; planEnabled: boolean; reason: string | null; provider: string; model: string; testMode: boolean;
+  dailyLimit: number; usedToday: number; minSecondsBetweenRequests: number; cacheSeconds: number; nextAllowedAt: string | null;
+};
+export type AiSubject = { kind: "alarm"; id: string } | { kind: "transaction"; flow: string; transactionId: string };
 export type AiEvidence = { id: string; type: string; [key: string]: unknown };
 export type AiAnalysis = {
-  id: string; created_at: string; provider: string; model: string; status: "completed" | "failed"; error: string | null;
-  duration_ms: number; requested_by: string | null; my_rating: AiRating | null; useful_count: number; critical_count: number;
+  id: string; created_at: string; subject_kind: "alarm" | "transaction"; provider: string; model: string; status: "pending" | "completed" | "failed"; error: string | null;
+  duration_ms: number; input_tokens: number | null; output_tokens: number | null; requested_by: string | null; my_rating: AiRating | null;
+  useful_count: number; critical_count: number; stale: boolean;
   evidence: AiEvidence[];
   result: { summary: string; cause: string; findings: { text: string; evidence: string[]; grounded: boolean }[];
     checks: string[]; unknowns: string[] } | null;
 };
 export type AiRating = "useful" | "wrong" | "incomplete";
 export const aiCauseNames: Record<string, string> = {
-  delay: "Gecikme", source_error: "Kaynak sistem hatası", notification: "Bildirim ulaşmadı", unknown: "Belirlenemedi",
+  delay: "Gecikme", source_error: "Kaynak sistem hatası", notification: "Bildirim ulaşmadı", none: "Açık sorun görülmedi", unknown: "Belirlenemedi",
 };
 export const aiRatingNames: Record<AiRating, string> = { useful: "Faydalı", wrong: "Hatalı", incomplete: "Eksik" };
 export type Operations = {

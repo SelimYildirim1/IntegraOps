@@ -15,7 +15,7 @@ using static IntegraOps.Infrastructure.PilotSecurity;
 namespace IntegraOps.Infrastructure;
 
 public sealed record MfaCodeInput(string? Code);
-public sealed record MfaChallengeInput(string? Challenge, string? Code);
+public sealed record MfaChallengeInput(string? Challenge, string? Code, bool Remember = false);
 public sealed record MfaDisableInput(string? Password, string? Code);
 public sealed record SsoConfigInput(string? Issuer, string? ClientId, string? ClientSecret, string? Domain, bool? Required);
 public sealed record SsoStartInput(string? Email);
@@ -114,10 +114,10 @@ public sealed class PostgresSecurityStore(NpgsqlDataSource source, IDataProtecti
         }
         await Run(c, tx, "UPDATE login_challenges SET used_at=clock_timestamp() WHERE token_hash=@h; UPDATE app_users SET failed_logins=0,locked_until=NULL,last_login_at=clock_timestamp() WHERE id=@u", ct,
             ("h", Hash(input.Challenge)), ("u", user));
-        var session = await PostgresIdentityStore.CreateSession(c, tx, user, ct);
-        await PostgresOrganizationStore.Security(c, tx, user, null, "login.mfa", ctx, null, ct);
+        var session = await PostgresIdentityStore.CreateSession(c, tx, user, ct, input.Remember);
+        await PostgresOrganizationStore.Security(c, tx, user, null, "login.mfa", ctx, input.Remember ? "beni hatırla" : null, ct);
         await tx.CommitAsync(ct);
-        return new { token = session, expiresIn = 28800, user = new SessionUser(user, (string)u["email"]!, (string)u["name"]!, (bool)u["is_system_admin"]!, true) };
+        return new { token = session, expiresIn = PostgresIdentityStore.SessionLifetime(input.Remember), user = new SessionUser(user, (string)u["email"]!, (string)u["name"]!, (bool)u["is_system_admin"]!, true) };
     }
 
     private static string RecoveryCode()

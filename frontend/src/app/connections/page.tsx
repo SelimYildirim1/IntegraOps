@@ -1,8 +1,9 @@
 import { api, apiMessage, getAccess } from "@/lib/api";
 import type { Connection, ConnectionTemplate, ProjectKey } from "@/lib/pilot-types";
-import { Message, number, PageHead, Time } from "@/components/ui";
+import { Empty, Explain, Message, number, PageHead, Time } from "@/components/ui";
 import ActionForm from "@/components/action-form";
 import RefreshControls from "@/components/refresh-controls";
+import PagedTable from "@/components/paged-table";
 import { adminAction } from "@/app/admin-actions";
 import MappingTester from "@/components/mapping-tester";
 
@@ -19,7 +20,7 @@ export default async function ConnectionsPage() {
     const access = await getAccess(); owner = access.role === "owner";
     [connections, catalog] = await Promise.all([api<Connection[]>("/connections"), api<ConnectionTemplate[]>("/connections/catalog")]);
     if (owner) keys = await api<ProjectKey[]>("/keys");
-  } catch (e) { return <Message title="Bağlantılar yüklenemedi" description={apiMessage(e)} />; }
+  } catch (e) { return <Message title="Bağlantılar yüklenemedi" description={apiMessage(e)} icon="alert" />; }
   const now = Date.now();
   const health = (c: Connection) => {
     const last = Math.max(Date.parse(c.last_event_at ?? "") || 0, Date.parse(c.last_ping_at ?? "") || 0, Date.parse(c.agent_seen_at ?? "") || 0);
@@ -30,13 +31,15 @@ export default async function ConnectionsPage() {
     return { tone: "good", label: "Çalışıyor" };
   };
   return <>
-    <PageHead title="Bağlantılar" lede="Bu projeye olay gönderen kaynak sistemler: hangi yolla bağlandıkları, son veri alışverişi, istemci sürümü ve reddedilen istekler.">
+    <PageHead icon="plug" title="Bağlantılar" lede="Bu projeye olay gönderen kaynak sistemler ve son veri alışverişleri.">
       <RefreshControls />
     </PageHead>
     <section className="surface">
-      <div className="table-wrap"><table><thead><tr><th>Bağlantı</th><th>Tür</th><th>Son olay</th><th>Son ping</th><th>İstemci</th><th className="right">Olay</th><th className="right">Red</th><th>Durum</th>{owner && <th></th>}</tr></thead><tbody>
-        {connections.map(c => { const h = health(c); return <tr key={c.id}>
-          <td>{c.name}{c.description && <small>{c.description}</small>}<small className="mono">{c.id}</small></td>
+      <div className="surface-head"><h2>Kaynak sistemler</h2><span className="count">{connections.length} bağlantı</span></div>
+      <PagedTable unit="bağlantı"
+        head={<tr><th>Bağlantı</th><th>Tür</th><th>Son olay</th><th>Son ping</th><th>İstemci</th><th className="right">Olay</th><th className="right">Red</th><th>Durum</th>{owner && <th></th>}</tr>}
+        rows={connections.map(c => { const h = health(c); return <tr key={c.id}>
+          <td>{c.name}{c.description && <small>{c.description}</small>}</td>
           <td>{kinds[c.kind] ?? c.kind}{c.template_code && <small className="mono">{c.template_code}</small>}</td>
           <td className="nowrap"><Time value={c.last_event_at} /></td><td className="nowrap"><Time value={c.last_ping_at ?? c.agent_seen_at} /></td>
           <td>{c.client_name || c.agent_version ? <>{c.client_name ?? "integraops-agent"}<small className="mono">{c.client_version ?? c.agent_version}</small></> : <span className="muted">—</span>}</td>
@@ -44,12 +47,11 @@ export default async function ConnectionsPage() {
           <td><span className={`badge ${h.tone}`}>{h.label}</span><small>{c.active_keys} etkin anahtar</small></td>
           {owner && <td><div className="cell-actions">{c.active_keys === 0 && <ActionForm action={adminAction} label="Sil" compact tone="danger"><Op value="connection-delete" id={c.id} /></ActionForm>}</div></td>}
         </tr>; })}
-      </tbody></table></div>
-      {connections.length === 0 && <div className="empty"><h3>Henüz bağlantı yok</h3><p>Kaynak sistemi bağlamak için aşağıdan bir bağlantı oluşturun; anahtarları ona bağlayın.</p></div>}
+        empty={<Empty icon="plug" title="Henüz bağlantı yok">Kaynak sistemi bağlamak için aşağıdan bir bağlantı oluşturun; anahtarları ona bağlayın.</Empty>} />
     </section>
 
     {owner && <section className="surface">
-      <div className="surface-head"><div><h2>Yeni bağlantı</h2><p>Doğrudan API, aktarım ajanı ve gönderici kütüphanesi olay biçimini kendisi üretir. Eşlemeli bağlantı ham kaynak verisini alır ve şablonla olaya çevirir.</p></div></div>
+      <div className="surface-head"><div><h2>Yeni bağlantı</h2><p>Doğrudan API, ajan ve kütüphane olay biçimini kendisi üretir; eşlemeli bağlantı ham veriyi şablonla olaya çevirir.</p></div></div>
       <div className="surface-body">
         <ActionForm action={adminAction} label="Bağlantı oluştur"><Op value="connection-create" />
           <div className="form-grid">
@@ -73,15 +75,16 @@ export default async function ConnectionsPage() {
     {(owner || connections.some(c => c.kind === "mapped")) && <MappingTester catalog={catalog} />}
 
     {owner && <section className="surface">
-      <div className="surface-head"><div><h2>Anahtarlar ve yenileme</h2><p>Anahtarı bağlantıya bağlamak kullanım ve sürüm bilgisini o bağlantıya yazar. Yenileme yeni anahtar üretir; eski anahtar geçiş süresi boyunca çalışmaya devam eder.</p></div></div>
-      <div className="table-wrap"><table><thead><tr><th>Anahtar</th><th>Bağlantı</th><th>Son kullanım</th><th>Durum</th><th></th></tr></thead><tbody>
-        {keys.filter(k => !k.revoked_at).map(k => <tr key={k.id}><td>{k.name}<small><code>{k.key_prefix}…</code> · {k.scope}</small></td><td>{k.connection ?? <span className="muted">—</span>}</td>
+      <div className="surface-head"><div><h2>Anahtarlar ve yenileme</h2><p>Yenileme yeni anahtar üretir; eski anahtar geçiş süresi boyunca çalışmaya devam eder.</p></div></div>
+      <PagedTable unit="anahtar"
+        head={<tr><th>Anahtar</th><th>Bağlantı</th><th>Son kullanım</th><th>Durum</th><th></th></tr>}
+        rows={keys.filter(k => !k.revoked_at).map(k => <tr key={k.id}><td>{k.name}<small><code>{k.key_prefix}…</code>, {k.scope}</small></td><td>{k.connection ?? <span className="muted">—</span>}</td>
           <td className="nowrap"><Time value={k.last_used_at} /></td>
           <td>{k.rotated_to ? <span className="badge warn">Yenilendi, {k.expires_at ? <>bitiş <Time value={k.expires_at} /></> : "geçişte"}</span> : <span className="badge good">Etkin</span>}</td>
           <td><div className="cell-actions">{!k.rotated_to && <ActionForm action={adminAction} label="Yenile" compact tone="secondary"><Op value="key-rotate" id={k.id} />
             <input name="graceHours" type="number" min={0} max={720} defaultValue={24} className="chip-input" style={{ minWidth: 80 }} aria-label="Geçiş süresi (saat)" /></ActionForm>}</div></td></tr>)}
-      </tbody></table></div>
-      <div className="surface-body" style={{ borderTop: "1px solid var(--line-2)" }}>
+        empty={<Empty icon="key" title="Etkin anahtar yok" />} />
+      <div className="surface-body">
         <h3>Bağlantıya bağlı yeni anahtar</h3>
         <ActionForm action={adminAction} label="Anahtar oluştur"><Op value="key-create" />
           <div className="form-grid">
@@ -91,6 +94,9 @@ export default async function ConnectionsPage() {
               <option value="">Bağlantısız</option>{connections.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select></div>
           </div>
         </ActionForm>
+        <Explain title="Anahtar ve bağlantı ilişkisi">
+          <p>Anahtarı bağlantıya bağlamak kullanım ve sürüm bilgisini o bağlantıya yazar; böylece hangi sistemin ne zaman veri gönderdiği bu sayfada izlenir.</p>
+        </Explain>
       </div>
     </section>}
   </>;

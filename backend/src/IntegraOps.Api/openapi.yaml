@@ -1,0 +1,925 @@
+openapi: 3.1.0
+info:
+  title: IntegraOps API
+  version: "1.4"
+  summary: İş süreci gözlem katmanı — olay kabulü, işlem takibi, alarm ve raporlar
+  description: |
+    IntegraOps farklı sistemlerden gelen iş olaylarını aynı işlem altında birleştirir, beklenen adımları ve süreleri izler,
+    gecikme ve hata alarmı üretir. Bu belge **entegrasyon yüzeyini** tanımlar: kaynak sistemlerin kullandığı uçlar ve
+    panelin arkasındaki okuma/yönetim uçları.
+
+    ## Kimlik doğrulama
+    * **API anahtarı** (`X-API-Key`): kaynak sistemler için. `ingest` yetkisi olay gönderir, `read` yetkisi takip verisini okur.
+      Anahtarlar projeye bağlıdır; proje kimliği gövdeden değil anahtardan çözülür.
+    * **Oturum** (`Authorization: Bearer` + `X-Project-Id`): panel ve yönetim uçları için. `/api/v1/auth/login` ile alınır.
+
+    ## Kayıpsızlık sözleşmesi
+    Kaynak sistem, iş kaydı ile gönderilecek olayı **aynı veritabanı işleminde** yazar (outbox) ve ayrı bir gönderici ile iletir.
+    Tekrar gönderimde aynı `eventId` kullanılır; aynı içerik `200`, farklı içerik `409` döner. Ayrıntı: `docs/entegrasyon-sozlesmesi.md`.
+  contact:
+    name: IntegraOps
+servers:
+  - url: http://127.0.0.1:8080
+    description: Yerel geliştirme
+  - url: https://{apiHost}
+    description: Canlı ortam
+    variables:
+      apiHost:
+        default: api.example.com
+tags:
+  - name: Olaylar
+    description: Kaynak sistemlerin gönderdiği iş olayları
+  - name: Akışlar
+    description: İzlenen süreçlerin tanımı, sürümleri ve şablonları
+  - name: İşlemler
+    description: İş kayıtlarının durumu ve zaman çizelgesi
+  - name: Alarmlar
+  - name: Bağlantılar
+    description: Kaynak sistem kayıtları, eşleme şablonları, ajan ve SDK bildirimleri
+  - name: Mutabakat
+  - name: Raporlar
+  - name: Yönetim
+    description: Anahtarlar, bildirim kanalları, oturum
+  - name: Sağlık
+security:
+  - ApiKey: []
+  - Session: []
+paths:
+  /health/live:
+    get:
+      tags: [Sağlık]
+      summary: Süreç ayakta mı
+      security: []
+      responses:
+        "200": { description: Ayakta }
+  /health/ready:
+    get:
+      tags: [Sağlık]
+      summary: Veritabanı ve şema hazır mı
+      security: []
+      responses:
+        "200": { description: Hazır }
+        "503": { description: Migration gerekli }
+  /openapi.yaml:
+    get:
+      tags: [Sağlık]
+      summary: Bu belge
+      security: []
+      responses:
+        "200": { description: OpenAPI belgesi (YAML) }
+
+  /api/v1/auth/login:
+    post:
+      tags: [Yönetim]
+      summary: Parola ile oturum aç
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email: { type: string, format: email }
+                password: { type: string }
+                remember: { type: boolean, default: false, description: "Beni hatırla: oturum 8 saat yerine 30 gün geçerli kalır." }
+      responses:
+        "200":
+          description: Oturum belirteci ya da iki adımlı doğrulama isteği
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  token: { type: string }
+                  expiresIn: { type: integer, description: Saniye }
+                  mfaRequired: { type: boolean }
+                  challenge: { type: string }
+        "401": { $ref: "#/components/responses/Problem" }
+        "429": { $ref: "#/components/responses/Problem" }
+
+  /api/v1/events:
+    post:
+      tags: [Olaylar]
+      summary: İş olayı bildir
+      description: |
+        İlk kabul `202`, aynı içerikle tekrar `200` (yinelenen), aynı `eventId` farklı içerik `409`.
+        Kabul, PostgreSQL işlemi tamamlandığında döner; kuyruk bağlantısı bu yolda yoktur. Plan sınırı aşıldığında `429`,
+        askıda ya da süresi dolmuş hesapta `402` döner.
+      security: [{ ApiKey: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/Event" }
+            examples:
+              tamamlandi:
+                value: { eventId: "0192f3c4-8b1a-7c2e-9f10-3a4b5c6d7e8f", flow: "erp-order-invoice", transactionId: "SO-000123", step: "invoice-created", status: "completed", occurredAt: "2026-09-22T10:15:00+03:00" }
+              hata:
+                value: { eventId: "0192f3c4-8b1a-7c2e-9f10-3a4b5c6d7e90", flow: "erp-order-invoice", transactionId: "SO-000123", step: "invoice-created", status: "failed", occurredAt: "2026-09-22T10:16:00+03:00", error: "e-Fatura reddedildi: vergi numarası geçersiz" }
+      responses:
+        "202":
+          description: Kabul edildi
+          headers:
+            Location: { schema: { type: string }, description: İşlemin zaman çizelgesi }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/EventReceipt" }
+        "200":
+          description: Daha önce kabul edilmiş aynı olay
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/EventReceipt" }
+        "400": { $ref: "#/components/responses/Validation" }
+        "401": { $ref: "#/components/responses/Problem" }
+        "402": { $ref: "#/components/responses/Problem" }
+        "404": { description: Akış bu projede yok }
+        "409": { description: Aynı eventId farklı içerikle }
+        "429": { $ref: "#/components/responses/Problem" }
+        "503": { description: Veritabanına ulaşılamadı; aynı eventId ile tekrar deneyin }
+
+  /api/v1/flows:
+    get:
+      tags: [Akışlar]
+      summary: Akışları listele
+      responses:
+        "200":
+          description: Akışlar
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    id: { type: string, format: uuid }
+                    code: { type: string }
+                    name: { type: string }
+                    stepCount: { type: integer }
+    post:
+      tags: [Akışlar]
+      summary: Doğrusal akış oluştur (1. sürüm yayınlanır)
+      description: Aşamalı, isteğe bağlı ya da koşullu adımlar için sürüm taslağı uçlarını kullanın.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [code, name, steps]
+              properties:
+                code: { $ref: "#/components/schemas/Code" }
+                name: { type: string, maxLength: 160 }
+                steps:
+                  type: array
+                  minItems: 2
+                  maxItems: 30
+                  items:
+                    type: object
+                    required: [code, name, maxDelaySeconds]
+                    properties:
+                      code: { $ref: "#/components/schemas/Code" }
+                      name: { type: string, maxLength: 160 }
+                      maxDelaySeconds: { type: [integer, "null"], minimum: 1, maximum: 2592000, description: İlk adımda null }
+                      instructions: { type: string, maxLength: 2000, description: Operatör için çalışma talimatı }
+                      link: { type: string, maxLength: 1024, description: "Kaynak sistem bağlantı şablonu; {transactionId}, {flow}, {step}" }
+      responses:
+        "201": { description: Oluşturuldu }
+        "400": { $ref: "#/components/responses/Validation" }
+        "409": { description: Aynı kodla akış var }
+  /api/v1/flows/catalog:
+    get:
+      tags: [Akışlar]
+      summary: Sektör şablonları kataloğu
+      responses:
+        "200":
+          description: Şablonlar
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/FlowTemplate" }
+  /api/v1/flows/from-template:
+    post:
+      tags: [Akışlar]
+      summary: Şablondan akış oluştur
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [template]
+              properties:
+                template: { type: string, example: ecommerce-order }
+                code: { $ref: "#/components/schemas/Code" }
+                name: { type: string, maxLength: 160 }
+      responses:
+        "201":
+          description: Oluşturuldu
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  code: { type: string }
+                  name: { type: string }
+                  template: { type: string }
+                  steps: { type: integer }
+        "404": { description: Şablon yok }
+        "409": { description: Aynı kodla akış var }
+  /api/v1/flows/{flow}:
+    get:
+      tags: [Akışlar]
+      summary: Akış ve etkin sürümünün adımları
+      parameters: [{ $ref: "#/components/parameters/Flow" }]
+      responses:
+        "200":
+          description: Akış ayrıntısı
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/FlowDetails" }
+        "404": { description: Akış yok }
+  /api/v1/flows/{flow}/versions:
+    post:
+      tags: [Akışlar]
+      summary: Yeni sürüm taslağı aç
+      parameters: [{ $ref: "#/components/parameters/Flow" }]
+      responses:
+        "201": { description: Taslak açıldı }
+        "409": { description: Zaten taslak var }
+  /api/v1/flows/{flow}/versions/{number}:
+    get:
+      tags: [Akışlar]
+      summary: Sürüm ayrıntısı
+      parameters: [{ $ref: "#/components/parameters/Flow" }, { $ref: "#/components/parameters/Version" }]
+      responses:
+        "200": { description: Sürüm }
+    put:
+      tags: [Akışlar]
+      summary: Taslağı düzenle
+      parameters: [{ $ref: "#/components/parameters/Flow" }, { $ref: "#/components/parameters/Version" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: { type: string }
+                note: { type: string, maxLength: 500 }
+                calendarId: { type: [string, "null"], format: uuid }
+                steps:
+                  type: array
+                  items: { $ref: "#/components/schemas/FlowStep" }
+      responses:
+        "204": { description: Kaydedildi }
+        "400": { $ref: "#/components/responses/Problem" }
+        "409": { description: Yalnızca taslak düzenlenebilir }
+    delete:
+      tags: [Akışlar]
+      summary: Taslağı sil
+      parameters: [{ $ref: "#/components/parameters/Flow" }, { $ref: "#/components/parameters/Version" }]
+      responses:
+        "204": { description: Silindi }
+  /api/v1/flows/{flow}/versions/{number}/publish:
+    post:
+      tags: [Akışlar]
+      summary: Taslağı yayınla
+      parameters: [{ $ref: "#/components/parameters/Flow" }, { $ref: "#/components/parameters/Version" }]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                effectiveFrom: { type: [string, "null"], format: date-time, description: Boşsa hemen; en fazla 1 yıl sonrası }
+      responses:
+        "200": { description: Yayınlandı }
+  /api/v1/flows/{flow}/demo:
+    post:
+      tags: [Akışlar]
+      summary: Örnek veri üret (DEMO- işlemler)
+      description: Gerçek kabul yolundan geçen örnek işlemler üretir; alarmlar etkin kanallara gider. Yalnızca sahip ve operatör.
+      parameters: [{ $ref: "#/components/parameters/Flow" }]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                count: { type: integer, minimum: 1, maximum: 200, default: 30 }
+                days: { type: integer, minimum: 1, maximum: 30, default: 14 }
+      responses:
+        "201":
+          description: Üretildi
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  flow: { type: string }
+                  transactions: { type: integer }
+                  events: { type: integer }
+    delete:
+      tags: [Akışlar]
+      summary: Örnek veriyi sil
+      parameters: [{ $ref: "#/components/parameters/Flow" }]
+      responses:
+        "200": { description: Silinen işlem sayısı }
+        "409": { description: Örnek veri hâlâ işleniyor }
+
+  /api/v1/flows/{flow}/transactions/{transactionId}:
+    get:
+      tags: [İşlemler]
+      summary: İşlemin zaman çizelgesi
+      parameters:
+        - { $ref: "#/components/parameters/Flow" }
+        - name: transactionId
+          in: path
+          required: true
+          schema: { $ref: "#/components/schemas/TransactionId" }
+      responses:
+        "200":
+          description: İşlem
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Transaction" }
+        "404": { description: İşlem bu projede yok }
+  /api/v1/transactions:
+    get:
+      tags: [İşlemler]
+      summary: İşlemleri listele
+      parameters:
+        - { name: flow, in: query, schema: { type: string } }
+        - { name: status, in: query, schema: { type: string, enum: [pending, inProgress, completed, failed, cancelled] } }
+        - { name: delay, in: query, schema: { type: string, enum: [waiting, overdue] } }
+        - { name: search, in: query, schema: { type: string, maxLength: 128 }, description: İşlem numarasının parçası }
+        - { name: from, in: query, schema: { type: string }, description: YYYY-AA-GG ya da ISO 8601 }
+        - { name: to, in: query, schema: { type: string }, description: Dışlayıcı }
+        - { $ref: "#/components/parameters/Test" }
+        - { $ref: "#/components/parameters/Page" }
+        - { $ref: "#/components/parameters/PageSize" }
+      responses:
+        "200": { description: Sayfa }
+  /api/v1/transactions/summary:
+    get:
+      tags: [İşlemler]
+      summary: Durum özeti
+      parameters:
+        - { name: flow, in: query, schema: { type: string } }
+        - { $ref: "#/components/parameters/Test" }
+      responses:
+        "200": { description: Sayılar }
+  /api/v1/transactions/export:
+    get:
+      tags: [İşlemler]
+      summary: CSV dışa aktarım (en fazla 20.000 satır)
+      security: [{ Session: [] }]
+      responses:
+        "200": { description: CSV, content: { text/csv: {} } }
+
+  /api/v1/alarms:
+    get:
+      tags: [Alarmlar]
+      summary: Alarmları listele
+      security: [{ Session: [] }]
+      parameters:
+        - { name: state, in: query, schema: { type: string, enum: [open, resolved, all], default: open } }
+        - { name: flow, in: query, schema: { type: string } }
+        - { name: search, in: query, schema: { type: string } }
+        - { name: assigned, in: query, schema: { type: string }, description: "me, none ya da kullanıcı kimliği" }
+        - { $ref: "#/components/parameters/Test" }
+        - { $ref: "#/components/parameters/Page" }
+      responses:
+        "200": { description: Sayfa }
+  /api/v1/alarms/{id}:
+    get:
+      tags: [Alarmlar]
+      summary: Alarm ayrıntısı, geçmişi, notları ve gönderimleri
+      security: [{ Session: [] }]
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      responses:
+        "200":
+          description: Alarm
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  alarm: { $ref: "#/components/schemas/Alarm" }
+                  events: { type: array, items: { type: object } }
+                  deliveries: { type: array, items: { type: object } }
+                  notes: { type: array, items: { type: object } }
+  /api/v1/alarms/{id}/acknowledge:
+    post:
+      tags: [Alarmlar]
+      summary: Gördüm olarak işaretle
+      security: [{ Session: [] }]
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      responses:
+        "204": { description: İşaretlendi }
+  /api/v1/alarms/{id}/assign:
+    post:
+      tags: [Alarmlar]
+      summary: Sorumlu ata
+      security: [{ Session: [] }]
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                userId: { type: string, description: "\"me\", kullanıcı kimliği ya da boş (kaldır)" }
+      responses:
+        "204": { description: Güncellendi }
+  /api/v1/alarms/{id}/notes:
+    post:
+      tags: [Alarmlar]
+      summary: Not ekle
+      security: [{ Session: [] }]
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [body]
+              properties:
+                body: { type: string, maxLength: 2000 }
+      responses:
+        "201": { description: Eklendi }
+
+  /api/v1/keys:
+    get:
+      tags: [Yönetim]
+      summary: API anahtarları
+      security: [{ Session: [] }]
+      responses:
+        "200": { description: Anahtarlar (ham değer gösterilmez) }
+    post:
+      tags: [Yönetim]
+      summary: Anahtar oluştur (ham değer bir kez döner)
+      security: [{ Session: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, scope]
+              properties:
+                name: { type: string, maxLength: 120 }
+                scope: { type: string, enum: [ingest, read] }
+                connectionId: { type: [string, "null"], format: uuid }
+      responses:
+        "201": { description: Oluşturuldu }
+  /api/v1/keys/{id}/rotate:
+    post:
+      tags: [Yönetim]
+      summary: Anahtarı geçiş süresiyle yenile
+      security: [{ Session: [] }]
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                graceHours: { type: integer, minimum: 0, maximum: 720, default: 24 }
+      responses:
+        "201": { description: Yeni anahtar }
+  /api/v1/channels:
+    get:
+      tags: [Yönetim]
+      summary: Bildirim kanalları
+      security: [{ Session: [] }]
+      responses:
+        "200": { description: Kanallar }
+    post:
+      tags: [Yönetim]
+      summary: Kanal oluştur
+      description: |
+        `email` bir adres, `webhook` izin listesindeki bir adres (HMAC-SHA256 imzalı), `slack` bir Slack Incoming Webhook adresi
+        (`hooks.slack.com`), `teams` bir Microsoft Teams Incoming Webhook ya da Workflows adresi (`*.webhook.office.com`,
+        `*.logic.azure.com`) alır. Slack ve Teams iletileri çalışma talimatını, kaynak sistem bağlantısını ve panel bağlantısını taşır.
+      security: [{ Session: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, kind, target]
+              properties:
+                name: { type: string, maxLength: 120 }
+                kind: { type: string, enum: [email, webhook, slack, teams] }
+                target: { type: string, maxLength: 2048 }
+                secret: { type: [string, "null"], minLength: 32, maxLength: 128, description: Yalnızca webhook; boşsa üretilir }
+      responses:
+        "201": { description: Oluşturuldu }
+        "400": { $ref: "#/components/responses/Problem" }
+        "409": { description: Aynı ad var }
+
+  /api/v1/connections:
+    get:
+      tags: [Bağlantılar]
+      summary: Bağlantılar, sağlık ve kullanım
+      responses:
+        "200": { description: Bağlantılar }
+    post:
+      tags: [Bağlantılar]
+      summary: Bağlantı kaydet
+      security: [{ Session: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, kind]
+              properties:
+                name: { type: string, maxLength: 120 }
+                kind: { type: string, enum: [direct, agent, sdk, mapped] }
+                description: { type: string }
+                template: { type: [object, "null"], additionalProperties: { type: string }, description: mapped için eşleme şablonu }
+                templateCode: { type: [string, "null"] }
+      responses:
+        "201": { description: Oluşturuldu }
+  /api/v1/connections/catalog:
+    get:
+      tags: [Bağlantılar]
+      summary: Hazır eşleme şablonları
+      responses:
+        "200": { description: Şablonlar }
+  /api/v1/connections/test:
+    post:
+      tags: [Bağlantılar]
+      summary: Şablonu örnek veriyle kuru çalıştır (olay kaydetmez)
+      security: [{ Session: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [template, sample]
+              properties:
+                template: { type: object, additionalProperties: { type: string } }
+                sample: {}
+      responses:
+        "200": { description: Kayıt başına üretilen olay ve sorunlar }
+  /api/v1/connections/{id}/ingest:
+    post:
+      tags: [Bağlantılar]
+      summary: Ham veriyi eşleyerek kabul et
+      description: Bağlantıya bağlı gönderim anahtarı gerekir. Her kayıt bağımsız kabul edilir; yanıt kabul, yinelenen ve reddedilen sayılarını verir.
+      security: [{ ApiKey: [] }]
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {}
+      responses:
+        "202": { description: İşlendi }
+  /api/v1/connections/ping:
+    post:
+      tags: [Bağlantılar]
+      summary: Bağlantı testi; istemci sürümünü kaydeder
+      security: [{ ApiKey: [] }]
+      responses:
+        "200": { description: "ok ve sunucu saati" }
+  /api/v1/agents/heartbeat:
+    post:
+      tags: [Bağlantılar]
+      summary: Aktarım ajanı yaşam sinyali
+      security: [{ ApiKey: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: { type: string }
+                version: { type: string }
+                host: { type: string }
+                sourceKind: { type: string }
+                pending: { type: integer }
+                sentTotal: { type: integer }
+                deadTotal: { type: integer }
+                lastError: { type: [string, "null"] }
+                config: { type: object }
+      responses:
+        "204": { description: Kaydedildi }
+
+  /api/v1/reconciliation/lookup:
+    post:
+      tags: [Mutabakat]
+      summary: İşlemleri toplu sorgula (mutabakat servisi)
+      security: [{ ApiKey: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [flow, transactionIds]
+              properties:
+                flow: { type: string }
+                transactionIds: { type: array, maxItems: 500, items: { type: string } }
+      responses:
+        "200": { description: Bilinen işlemler ve adımları }
+  /api/v1/reconciliation/runs:
+    get:
+      tags: [Mutabakat]
+      summary: Koşu geçmişi
+      responses:
+        "200": { description: Koşular }
+    post:
+      tags: [Mutabakat]
+      summary: Koşu sonucu kaydet (gönderim anahtarı)
+      security: [{ ApiKey: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object }
+      responses:
+        "201": { description: Kaydedildi; yeni/tekrar/çözüldü sayıları }
+
+  /api/v1/reports/overview:
+    get:
+      tags: [Raporlar]
+      summary: Bütün göstergeler
+      parameters:
+        - { name: from, in: query, schema: { type: string } }
+        - { name: to, in: query, schema: { type: string } }
+        - { name: flow, in: query, schema: { type: string } }
+        - { $ref: "#/components/parameters/Test" }
+      responses:
+        "200": { description: Gösterge kümesi }
+  /api/v1/reports/trend:
+    get:
+      tags: [Raporlar]
+      summary: Eğilim kovaları
+      parameters:
+        - { name: flow, in: query, schema: { type: string } }
+        - { name: period, in: query, schema: { type: string, enum: [day, week] } }
+        - { name: buckets, in: query, schema: { type: integer, minimum: 2, maximum: 90 } }
+        - { $ref: "#/components/parameters/Test" }
+      responses:
+        "200": { description: Kovalar }
+  /api/v1/reports/breaches:
+    get:
+      tags: [Raporlar]
+      summary: Süre ihlali listesi
+      parameters:
+        - { name: flow, in: query, schema: { type: string } }
+        - { name: from, in: query, schema: { type: string } }
+        - { name: to, in: query, schema: { type: string } }
+        - { $ref: "#/components/parameters/Test" }
+        - { $ref: "#/components/parameters/Page" }
+      responses:
+        "200": { description: İhlaller ve adım özeti }
+  /api/v1/reports/digest:
+    post:
+      tags: [Raporlar]
+      summary: Özet e-postasını şimdi gönder
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [period]
+              properties:
+                period: { type: string, enum: [daily, weekly] }
+      responses:
+        "200": { description: Kuyruğa alınan alıcı sayısı }
+
+components:
+  securitySchemes:
+    ApiKey:
+      type: apiKey
+      in: header
+      name: X-API-Key
+      description: "Proje anahtarı (io_v1_...). Yetki: ingest ya da read."
+    Session:
+      type: http
+      scheme: bearer
+      description: Oturum belirteci; proje `X-Project-Id` başlığıyla seçilir.
+  parameters:
+    Flow:
+      name: flow
+      in: path
+      required: true
+      schema: { $ref: "#/components/schemas/Code" }
+    Version:
+      name: number
+      in: path
+      required: true
+      schema: { type: integer, minimum: 1 }
+    Id:
+      name: id
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    Test:
+      name: test
+      in: query
+      schema: { type: string, enum: [exclude, include, only], default: exclude }
+      description: TEST- önekli işlemler
+    Page:
+      name: page
+      in: query
+      schema: { type: integer, minimum: 1, default: 1 }
+    PageSize:
+      name: pageSize
+      in: query
+      schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+  responses:
+    Problem:
+      description: Hata (RFC 9457 problem details)
+      content:
+        application/problem+json:
+          schema:
+            type: object
+            properties:
+              status: { type: integer }
+              title: { type: string }
+    Validation:
+      description: Alan hataları
+      content:
+        application/problem+json:
+          schema:
+            type: object
+            properties:
+              status: { type: integer }
+              title: { type: string }
+              errors:
+                type: object
+                additionalProperties:
+                  type: array
+                  items: { type: string }
+  schemas:
+    Code:
+      type: string
+      pattern: "^[a-z][a-z0-9-]{0,63}$"
+      description: Küçük harfle başlayan harf/rakam/tire kodu
+    TransactionId:
+      type: string
+      pattern: "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+      description: İki sistemde de aynı iş kaydını gösteren kimlik (sipariş numarası). Kişisel veri içermez.
+    Event:
+      type: object
+      required: [eventId, flow, transactionId, step, status, occurredAt]
+      properties:
+        eventId: { type: string, format: uuid, description: Her iş olayı için bir kez üretilir; tekrar gönderimde aynı kalır }
+        flow: { $ref: "#/components/schemas/Code" }
+        transactionId: { $ref: "#/components/schemas/TransactionId" }
+        step: { $ref: "#/components/schemas/Code" }
+        status:
+          type: string
+          enum: [completed, failed, skipped, cancelled]
+          description: "completed: adım gerçekleşti; failed: denendi, hata verdi; skipped: bilinçli olarak yapılmadı; cancelled: işlem iptal edildi"
+        occurredAt: { type: string, format: date-time, description: Kaynakta gerçekleşme anı, saat dilimi zorunlu; sunucu saatinden 5 dk'dan fazla ileride olamaz }
+        error: { type: [string, "null"], maxLength: 2000, description: Yalnızca failed/cancelled; kişisel veri ve yığın izi içermez }
+        group: { type: [string, "null"], description: Grup süreleri ve koşullu adımlar için; ilk bildirimle sabitlenir }
+    EventReceipt:
+      type: object
+      properties:
+        eventId: { type: string, format: uuid }
+        transactionRecordId: { type: string, format: uuid }
+        duplicate: { type: boolean }
+        acceptedAt: { type: string, format: date-time }
+    FlowStep:
+      type: object
+      required: [code, name]
+      properties:
+        code: { $ref: "#/components/schemas/Code" }
+        name: { type: string, maxLength: 160 }
+        maxDelaySeconds: { type: [integer, "null"], minimum: 1, maximum: 2592000 }
+        stage: { type: integer, minimum: 0, description: Aynı aşamadaki adımlar paralel ilerler }
+        kind: { type: string, enum: [required, optional, conditional], default: required }
+        groups: { type: array, items: { type: string }, description: Koşullu adımın beklendiği gruplar }
+        overrides: { type: object, additionalProperties: { type: integer }, description: Grup başına farklı süre (saniye) }
+        instructions: { type: string, maxLength: 2000, description: Alarmla birlikte gösterilen çalışma talimatı }
+        link: { type: string, maxLength: 1024, description: "Kaynak sistem bağlantı şablonu, örn. https://erp.sirket.com/orders/{transactionId}" }
+    FlowDetails:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        code: { type: string }
+        name: { type: string }
+        version: { type: [integer, "null"] }
+        calendar: { type: [string, "null"] }
+        steps: { type: array, items: { $ref: "#/components/schemas/FlowStep" } }
+        versions: { type: array, items: { type: object } }
+        hasDraft: { type: boolean }
+        demoCount: { type: integer, description: DEMO- önekli örnek işlem sayısı }
+    FlowTemplate:
+      type: object
+      properties:
+        code: { type: string }
+        name: { type: string }
+        sector: { type: string }
+        description: { type: string }
+        promise: { type: string }
+        stepCount: { type: integer }
+        stageCount: { type: integer }
+        groups: { type: array, items: { type: string } }
+        steps: { type: array, items: { $ref: "#/components/schemas/FlowStep" } }
+    Transaction:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        flow: { type: string }
+        transactionId: { type: string }
+        status: { type: string, enum: [pending, inProgress, completed, failed, cancelled] }
+        acceptedEventCount: { type: integer }
+        processedEventCount: { type: integer }
+        flowVersion: { type: integer }
+        group: { type: [string, "null"] }
+        calendar: { type: [string, "null"] }
+        delay:
+          type: [object, "null"]
+          properties:
+            state: { type: string, enum: [none, waiting, overdue, pending_processing, pending_evaluation] }
+            step: { type: [string, "null"] }
+            startedAt: { type: [string, "null"], format: date-time }
+            deadlineAt: { type: [string, "null"], format: date-time }
+            checkedAt: { type: [string, "null"], format: date-time }
+        steps:
+          type: array
+          items:
+            type: object
+            properties:
+              code: { type: string }
+              name: { type: string }
+              position: { type: integer }
+              stage: { type: integer }
+              kind: { type: string }
+              maxDelaySeconds: { type: [integer, "null"] }
+              observation: { type: string, enum: [not_observed, completed, failed, skipped, cancelled, not_applicable] }
+              occurredAt: { type: [string, "null"], format: date-time }
+              error: { type: [string, "null"] }
+              instructions: { type: string }
+              link: { type: [string, "null"], description: Bu işlem için doldurulmuş kaynak sistem bağlantısı }
+        events:
+          type: array
+          items:
+            type: object
+            properties:
+              eventId: { type: string, format: uuid }
+              step: { type: string }
+              status: { type: string }
+              occurredAt: { type: string, format: date-time }
+              receivedAt: { type: string, format: date-time }
+              error: { type: [string, "null"] }
+    Alarm:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        flow: { type: string }
+        business_id: { type: string }
+        kind: { type: string, enum: [overdue, failed] }
+        step_code: { type: string }
+        step_name: { type: [string, "null"] }
+        instructions: { type: string }
+        link: { type: [string, "null"] }
+        error: { type: [string, "null"] }
+        opened_at: { type: string, format: date-time }
+        deadline_at: { type: [string, "null"], format: date-time }
+        acknowledged_at: { type: [string, "null"], format: date-time }
+        resolved_at: { type: [string, "null"], format: date-time }
+        resolution: { type: [string, "null"], enum: [step_completed, cancelled, condition_cleared, null] }
+        assigned_to: { type: [string, "null"], format: uuid }
+    WebhookNotification:
+      description: |
+        `webhook` kanalına gönderilen gövde. Başlıklar: `X-IntegraOps-Delivery` (teslimat kimliği), `X-IntegraOps-Time` (unix saniye),
+        `X-IntegraOps-Signature` = `sha256=` + HMAC-SHA256(secret, `{time}.{delivery}.{body}`).
+      type: object
+      properties:
+        schema_version: { type: integer, const: 1 }
+        event: { type: string, enum: [opened, resolved] }
+        event_id: { type: string, format: uuid }
+        alarm_id: { type: string, format: uuid }
+        project_id: { type: string, format: uuid }
+        flow: { type: string }
+        transaction_id: { type: string }
+        alarm_kind: { type: string, enum: [overdue, failed] }
+        step_code: { type: string }
+        step_name: { type: [string, "null"] }
+        instructions: { type: string }
+        link: { type: [string, "null"] }
+        error: { type: [string, "null"] }
+        deadline_at: { type: [string, "null"], format: date-time }
+        opened_at: { type: string, format: date-time }
+        resolved_at: { type: [string, "null"], format: date-time }
+        resolution: { type: [string, "null"] }

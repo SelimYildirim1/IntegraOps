@@ -12,7 +12,7 @@ public sealed class PilotHttpException(int status, string message) : Exception(m
 {
     public int Status { get; } = status;
 }
-public sealed record LoginInput(string Email, string Password);
+public sealed record LoginInput(string Email, string Password, bool Remember = false);
 public sealed record FirstOwnerInput(string Email, string Name, string Password);
 public sealed record MemberInput(string Email, string Name, string Role, string? Password);
 public sealed record KeyInput(string Name, string Scope, Guid? ConnectionId = null);

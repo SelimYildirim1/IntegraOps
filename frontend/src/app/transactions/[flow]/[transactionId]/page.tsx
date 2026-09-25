@@ -1,9 +1,13 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ApiError, apiMessage, getTransaction } from "@/lib/api";
+import { api, ApiError, apiMessage, getAccess, getTransaction } from "@/lib/api";
+import type { AiAnalysis, AiStatus } from "@/lib/pilot-types";
+import AiAnalysisPanel from "@/components/ai-analysis";
 import type { DelayInfo, TimelineStep, TransactionDetail } from "@/lib/types";
 import { stepKindLabels } from "@/lib/types";
-import { Badge, DeadlineMeter, Message, number, PageHead, Time } from "@/components/ui";
+import { Badge, DeadlineMeter, Empty, Explain, Message, number, PageHead, Time } from "@/components/ui";
+import PagedTable from "@/components/paged-table";
+import Icon from "@/components/icons";
 import RefreshControls from "@/components/refresh-controls";
 import { elapsedBetween, spanText, stepTiming } from "@/lib/time";
 
@@ -18,8 +22,13 @@ export default async function Detail({ params }: {
   try { item = await getTransaction(flow, transactionId); }
   catch (error) {
     if (error instanceof ApiError && error.status === 404) notFound();
-    return <Message title="İşlem yüklenemedi" description={apiMessage(error)} />;
+    return <Message title="İşlem yüklenemedi" description={apiMessage(error)} icon="alert" />;
   }
+  // AI panel is optional: a failure here must not hide the transaction itself.
+  const aiPath = `/flows/${encodeURIComponent(flow)}/transactions/${encodeURIComponent(transactionId)}/ai-analyses`;
+  const [aiStatus, analyses, canAct] = await Promise.all([
+    api<AiStatus>("/ai/status").catch(() => null), api<AiAnalysis[]>(aiPath).catch(() => [] as AiAnalysis[]),
+    getAccess().then(a => a.role !== "viewer").catch(() => false)]);
   const delay: DelayInfo = item.delay ?? {
     state: "pending_evaluation", step: null, startedAt: null, deadlineAt: null, checkedAt: null,
   };
@@ -45,7 +54,7 @@ export default async function Detail({ params }: {
   const cancelledStep = steps.find(s => s.observation === "cancelled");
 
   return <>
-    <PageHead crumb={{ href: `/?${new URLSearchParams({ flow })}`, label: "İşlem listesi" }}
+    <PageHead crumb={{ href: `/?${new URLSearchParams({ flow })}`, label: "İşlem listesi" }} icon="activity"
       title={<span className="mono">{item.transactionId}</span>}
       lede={<>{item.flow} akışı, {item.flowVersion}. sürüm{item.calendar ? `, ${item.calendar} takvimi` : ""}{item.group ? <>, grup <span className="mono">{item.group}</span></> : ""}. {number(item.acceptedEventCount)} bildirim kabul edildi, {number(item.processedEventCount)} işlendi.</>}>
       <Badge value={item.status} /><RefreshControls />
@@ -90,6 +99,10 @@ export default async function Detail({ params }: {
                         ? <DeadlineMeter startedAt={delay.startedAt} deadlineAt={isExpected ? delay.deadlineAt : (delay.startedAt ? new Date(Date.parse(delay.startedAt) + step.maxDelaySeconds * 1000).toISOString() : null)} state={delay.state} />
                         : <span className="gap">{spanText(step.maxDelaySeconds)} tanınan süre</span>}
                   {step.error && <pre className="error-content" style={{ marginTop: 10 }}>{step.error}</pre>}
+                  {(step.link || (step.instructions && (isExpected || pendingBranch || step.observation === "failed"))) && <div className="runbook">
+                    {step.instructions && (isExpected || pendingBranch || step.observation === "failed") && <p><strong>Ne yapılmalı:</strong> {step.instructions}</p>}
+                    {step.link && <a className="button quiet small" href={step.link} target="_blank" rel="noopener noreferrer"><Icon name="open" size={14} />Kaynak sistemde aç</a>}
+                  </div>}
                 </div>
               </li>;
             });
@@ -107,7 +120,9 @@ export default async function Detail({ params }: {
             <div><dt>Son kontrol</dt><dd className="time">{delay.checkedAt ? <Time value={delay.checkedAt} /> : "—"}</dd></div>
           </dl>
           {waiting && <DeadlineMeter startedAt={delay.startedAt} deadlineAt={delay.deadlineAt} state={delay.state} />}
-          <p className="help">Süre kontrolü, worker tarafından düzenli aralıklarla yapılır. Süre dolduğunda alarm açılır; eksik adım bildirilince ya da atlandığı bildirilince alarm kendiliğinden kapanır. Paralel dallarda en yakın son zaman gösterilir; her geciken dal ayrı alarm açar.</p>
+          <Explain>
+            <p>Süre kontrolü worker tarafından düzenli aralıklarla yapılır. Süre dolduğunda alarm açılır; eksik adım bildirilince ya da atlandığı bildirilince alarm kendiliğinden kapanır. Paralel dallarda en yakın son zaman gösterilir; her geciken dal ayrı alarm açar.</p>
+          </Explain>
         </div>
       </section>
     </div>
@@ -115,16 +130,18 @@ export default async function Detail({ params }: {
     <section className="surface">
       <div className="surface-head"><div><h2>Gelen bildirimler</h2><p>En yeni bildirim en üstte.</p></div>
         <span className="count">{number(item.events.length)} bildirim</span></div>
-      <div className="table-wrap"><table><thead><tr><th>Adım</th><th>Bildirim kimliği</th><th>Sonuç</th><th>Gerçekleşme</th><th>Ulaşma</th><th>Açıklama</th></tr></thead>
-        <tbody>{[...item.events].reverse().map(event => <tr key={event.eventId}>
+      <PagedTable unit="bildirim"
+        head={<tr><th>Adım</th><th>Bildirim kimliği</th><th>Sonuç</th><th>Gerçekleşme</th><th>Ulaşma</th><th>Açıklama</th></tr>}
+        rows={[...item.events].reverse().map(event => <tr key={event.eventId}>
           <td>{steps.find(s => s.code === event.step)?.name ?? event.step}<small className="mono">{event.step}</small></td>
           <td className="mono" style={{ fontSize: 12 }}>{event.eventId}</td>
           <td><Badge value={event.status} /></td>
           <td className="nowrap"><Time value={event.occurredAt} /></td><td className="nowrap"><Time value={event.receivedAt} /></td>
           <td>{event.error ? <span className="error-content" style={{ display: "inline-block", padding: "4px 8px" }}>{event.error}</span> : <span className="muted">—</span>}</td>
-        </tr>)}</tbody></table></div>
-      {item.events.length === 0 && <div className="empty"><h3>Henüz işlenmiş bildirim yok</h3><p>İlk bildirim işlendiğinde burada listelenir.</p></div>}
+        </tr>)}
+        empty={<Empty icon="inbox" title="Henüz işlenmiş bildirim yok">İlk bildirim işlendiğinde burada listelenir.</Empty>} />
     </section>
-    <p className="help"><Link href={`/flows/view/${encodeURIComponent(item.flow)}`} prefetch={false}>Bu akışın tanımını görüntüle</Link></p>
+    <AiAnalysisPanel subject={{ kind: "transaction", flow, transactionId }} status={aiStatus} analyses={analyses} canAct={canAct} isTest={/^TEST-/.test(item.transactionId)} />
+    <p className="help"><Link href={`/flows/view/${encodeURIComponent(item.flow)}`} prefetch={false}><Icon name="workflow" size={14} /> Bu akışın tanımını görüntüle</Link></p>
   </>;
 }

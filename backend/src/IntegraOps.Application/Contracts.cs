@@ -5,7 +5,7 @@ namespace IntegraOps.Application;
 public sealed record CreateProjectRequest(string OrganizationName, string ProjectName);
 public sealed record ProjectCredentials(Guid OrganizationId, Guid ProjectId, string ApiKey);
 public sealed record ProjectAccess(Guid OrganizationId, Guid ProjectId);
-public sealed record CreateFlowStep(string Code, string Name, int? MaxDelaySeconds);
+public sealed record CreateFlowStep(string Code, string Name, int? MaxDelaySeconds, string? Instructions = null, string? Link = null);
 public sealed record CreateFlowRequest(string Code, string Name, IReadOnlyList<CreateFlowStep> Steps);
 public sealed record SubmitEventRequest(
     Guid EventId, string Flow, string TransactionId, string Step,

@@ -67,6 +67,8 @@ jobs:
           python3 scripts/verify_connections.py
       - name: Verify enterprise features
         run: python3 scripts/verify_enterprise.py
+      - name: Verify wave 1 (chat channels, runbooks, templates, sample data, OpenAPI)
+        run: python3 scripts/verify_wave1.py
       - name: Capacity smoke test
         run: python3 scripts/load_test.py --transactions 100 --concurrency 8
       - name: Start monitoring stack

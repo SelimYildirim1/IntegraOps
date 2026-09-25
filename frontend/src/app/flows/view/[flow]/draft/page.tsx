@@ -15,7 +15,7 @@ export default async function DraftPage({ params }: { params: Promise<{ flow: st
     if (!draft) return <Message title="Taslak yok" description="Bu akışın düzenlenecek taslağı yok. Akış sayfasından yeni sürüm taslağı oluşturun." href={`/flows/view/${flow}`} action="Akışa dön" />;
     const [version, calendars] = await Promise.all([getFlowVersion(flow, draft.version), getCalendars()]);
     return <>
-      <PageHead crumb={{ href: `/flows/view/${flow}`, label: overview.name }} title={`${draft.version}. sürüm taslağı`}
+      <PageHead crumb={{ href: `/flows/view/${flow}`, label: overview.name }} icon="note" title={`${draft.version}. sürüm taslağı`}
         lede="Adımları, süreleri, grup sürelerini ve takvimi düzenleyin. Yayınlayana kadar hiçbir işlem etkilenmez." />
       <VersionEditor key={version.version} draft={version} calendars={calendars} />
     </>;

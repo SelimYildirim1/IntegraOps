@@ -45,6 +45,8 @@ public static partial class InputValidation
                     errors[$"steps[{i}].maxDelaySeconds"] = ["Başlangıç adımının önceki adıma göre süresi yoktur."];
                 if (i > 0 && (step.MaxDelaySeconds is null or < 1 or > 2592000))
                     errors[$"steps[{i}].maxDelaySeconds"] = ["Önceki adımdan sonraki süre 1–2592000 saniye (30 gün) olmalı."];
+                if (step.Instructions is { Length: > 2000 }) errors[$"steps[{i}].instructions"] = ["Talimat en fazla 2000 karakter olabilir."];
+                if (StepLinks.Validate(step.Link) is { } linkError) errors[$"steps[{i}].link"] = [linkError];
             }
         }
         ThrowIfInvalid(errors);

@@ -6,9 +6,9 @@ import { draftAction, type DraftState } from "@/app/flows/versions-actions";
 import { delayDraft, type FlowVersionDetails } from "@/lib/flow-details";
 import type { Calendar } from "@/lib/pilot-types";
 
-type StepDraft = { id: number; code: string; name: string; delayValue: string; delayUnit: string; overrides: string; parallel: boolean; kind: string; groups: string };
+type StepDraft = { id: number; code: string; name: string; delayValue: string; delayUnit: string; overrides: string; parallel: boolean; kind: string; groups: string; instructions: string; link: string };
 const units: Record<string, number> = { seconds: 1, minutes: 60, hours: 3600, days: 86400 };
-const blank = (id: number): StepDraft => ({ id, code: "", name: "", delayValue: "", delayUnit: "minutes", overrides: "", parallel: false, kind: "required", groups: "" });
+const blank = (id: number): StepDraft => ({ id, code: "", name: "", delayValue: "", delayUnit: "minutes", overrides: "", parallel: false, kind: "required", groups: "", instructions: "", link: "" });
 
 // "vip=30m, standard=2h" biçimindeki grup sürelerini saniyeye çevirir.
 export function parseOverrides(text: string): { ok: true; value: Record<string, number> } | { ok: false; error: string } {
@@ -39,7 +39,8 @@ export default function VersionEditor({ draft, calendars }: { draft: FlowVersion
   const [steps, setSteps] = useState<StepDraft[]>(() => {
     const sorted = [...draft.steps].sort((a, b) => a.position - b.position);
     return sorted.map((s, i) => ({ id: i, code: s.code, name: s.name, ...delayDraft(s.maxDelaySeconds), overrides: overridesText(s.overrides),
-      parallel: i > 0 && (s.stage ?? i) === (sorted[i - 1].stage ?? i - 1), kind: s.kind ?? "required", groups: (s.groups ?? []).join(", ") }));
+      parallel: i > 0 && (s.stage ?? i) === (sorted[i - 1].stage ?? i - 1), kind: s.kind ?? "required", groups: (s.groups ?? []).join(", "),
+      instructions: s.instructions ?? "", link: s.link ?? "" }));
   });
   const [error, setError] = useState("");
   const nextId = useRef(draft.steps.length);
@@ -63,7 +64,11 @@ export default function VersionEditor({ draft, calendars }: { draft: FlowVersion
       if (i > 0 && seconds !== null && (!/^\d+$/.test(s.delayValue) || seconds < 1 || seconds > 2592000)) { setError(`${i + 1}. adımın süresi 1 saniye–30 gün arasında olmalı.`); return null; }
       const groups = s.groups.split(",").map(g => g.trim()).filter(Boolean);
       if (s.kind === "conditional" && groups.length === 0) { setError(`${i + 1}. koşullu adım için en az bir grup yazın.`); return null; }
-      out.push({ code: s.code.trim(), name: s.name.trim(), maxDelaySeconds: seconds, overrides: parsed.value, stage, kind: s.kind, groups: s.kind === "conditional" ? groups : [] });
+      if (s.instructions.length > 2000) { setError(`${i + 1}. adımın talimatı en fazla 2000 karakter olabilir.`); return null; }
+      const link = s.link.trim();
+      if (link && !/^https?:\/\/[^\s{}]+(\{(transactionId|flow|step)\}[^\s{}]*)*$/.test(link)) { setError(`${i + 1}. adımın bağlantısı https:// ile başlamalı; yalnızca {transactionId}, {flow} ve {step} yer tutucuları kullanılabilir.`); return null; }
+      out.push({ code: s.code.trim(), name: s.name.trim(), maxDelaySeconds: seconds, overrides: parsed.value, stage, kind: s.kind, groups: s.kind === "conditional" ? groups : [],
+        instructions: s.instructions.trim(), link });
     }
     setError("");
     return JSON.stringify({ name: name.trim(), note: note.trim(), calendarId, steps: out });
@@ -118,6 +123,18 @@ export default function VersionEditor({ draft, calendars }: { draft: FlowVersion
             <div className="field"><label htmlFor={`s-${s.id}-ov`}>Grup süreleri</label>
               <input id={`s-${s.id}-ov`} value={s.overrides} placeholder="vip=30dk, kurumsal=2sa" onChange={e => update(s.id, { overrides: e.target.value })} /></div>
           </div>}
+          <details className="details runbook-fields" open={Boolean(s.instructions || s.link)}><summary>Çalışma talimatı ve kaynak sistem bağlantısı</summary>
+            <div className="form-grid">
+              <div className="field" style={{ gridColumn: "1 / -1" }}><label htmlFor={`s-${s.id}-ins`}>Bu adım geciktiğinde ya da hata verdiğinde ne yapılmalı?</label>
+                <textarea id={`s-${s.id}-ins`} rows={3} maxLength={2000} value={s.instructions} placeholder="Örnek: e-Fatura entegratörünün gönderim kuyruğuna ve hata kayıtlarına bakın; vergi numarası eksikse müşteri kaydını düzeltip faturayı yeniden tetikleyin."
+                  onChange={e => update(s.id, { instructions: e.target.value })} />
+                <span className="hint">Alarm iletisinde (e-posta, Slack, Teams) ve alarm sayfasında gösterilir.</span></div>
+              <div className="field" style={{ gridColumn: "1 / -1" }}><label htmlFor={`s-${s.id}-link`}>Kaynak sistemde aç (bağlantı şablonu)</label>
+                <input id={`s-${s.id}-link`} value={s.link} maxLength={1024} placeholder="https://erp.sirket.com/orders/{transactionId}" autoCapitalize="none" spellCheck={false}
+                  onChange={e => update(s.id, { link: e.target.value })} />
+                <span className="hint"><code>{"{transactionId}"}</code> işlem numarasıyla, <code>{"{flow}"}</code> ve <code>{"{step}"}</code> kodlarla doldurulur.</span></div>
+            </div>
+          </details>
         </li>)}</ol>
         <button className="button secondary" type="button" disabled={steps.length >= 30} onClick={() => setSteps(cur => [...cur, blank(nextId.current++)])}>Adım ekle</button>
         {(error || state.message) && <p className={`form-status ${state.ok && !error ? "ok" : "err"}`} role="alert">{error || state.message}</p>}

@@ -23,6 +23,7 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
           <input id="email" name="email" type="email" required maxLength={254} autoComplete="username" autoFocus /></div>
         <div className="field"><label htmlFor="password">Parola</label>
           <input id="password" name="password" type="password" required maxLength={128} autoComplete="current-password" /></div>
+        <div className="field"><label className="toggle"><input type="checkbox" name="remember" />Beni hatırla (30 gün oturum açık kalır)</label></div>
       </ActionForm>
       <p className="help" style={{ marginTop: 16 }}><Link href="/forgot" prefetch={false}>Parolamı unuttum</Link> · <Link href="/signup" prefetch={false}>Hesap açın</Link></p>
       <details style={{ marginTop: 20 }}>

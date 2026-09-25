@@ -6,30 +6,36 @@ import { revalidatePath } from "next/cache";
 import { api, apiMessage, ApiError, completeMfa, completeToken, getProjects, login, requestPasswordReset, signup, startSso } from "@/lib/api";
 import type { ActionState } from "@/lib/pilot-types";
 
-const cookieOptions = () => ({ httpOnly: true, sameSite: "lax" as const,
-  secure: process.env.PANEL_COOKIE_SECURE === "true", path: "/", maxAge: 28800 });
+const sessionSeconds = 28800;
+const cookieOptions = (maxAge = sessionSeconds) => ({ httpOnly: true, sameSite: "lax" as const,
+  secure: process.env.PANEL_COOKIE_SECURE === "true", path: "/", maxAge });
+// The session cookie lives as long as the API session; the project choice may outlive a short session.
+const sessionCookie = (expiresIn?: number) => cookieOptions(expiresIn && expiresIn > 0 ? expiresIn : sessionSeconds);
+const projectCookie = () => cookieOptions(30 * 24 * 3600);
 
 export async function loginAction(_state: ActionState, data: FormData): Promise<ActionState> {
   const email = String(data.get("email") ?? ""); const password = String(data.get("password") ?? "");
+  const remember = data.get("remember") === "on";
   if (email.length > 254 || password.length > 128) return { message: "Giriş bilgilerini kontrol edin." };
   let result;
-  try { result = await login(email, password); }
+  try { result = await login(email, password, remember); }
   catch (e) { return { message: e instanceof ApiError && e.status === 401 ? "E-posta veya parola doğrulanamadı." : apiMessage(e) }; }
-  if (result.mfaRequired && result.challenge) redirect("/login/mfa?c=" + result.challenge);
+  if (result.mfaRequired && result.challenge) redirect("/login/mfa?c=" + result.challenge + (remember ? "&r=1" : ""));
   if (!result.token) return { message: "Giriş yanıtı okunamadı." };
   const jar = await cookies();
-  jar.set("io_session", result.token, cookieOptions()); jar.delete("io_project");
+  jar.set("io_session", result.token, sessionCookie(result.expiresIn)); jar.delete("io_project");
   redirect("/projects");
 }
 export async function mfaLoginAction(_state: ActionState, data: FormData): Promise<ActionState> {
   const challenge = String(data.get("challenge") ?? ""); const code = String(data.get("code") ?? "").trim();
+  const remember = data.get("remember") === "1";
   if (!/^[0-9a-f]{64}$/.test(challenge)) return { message: "Doğrulama isteği geçersiz. Tekrar giriş yapın." };
   if (code.length < 6 || code.length > 12) return { message: "Uygulamadaki 6 haneli kodu ya da 10 karakterli kurtarma kodunu girin." };
   let result;
-  try { result = await completeMfa(challenge, code); }
+  try { result = await completeMfa(challenge, code, remember); }
   catch (e) { return { message: e instanceof ApiError && e.status === 401 ? e.message : apiMessage(e) }; }
   const jar = await cookies();
-  jar.set("io_session", result.token, cookieOptions()); jar.delete("io_project");
+  jar.set("io_session", result.token, sessionCookie(result.expiresIn)); jar.delete("io_project");
   redirect("/projects");
 }
 export async function signupAction(_state: ActionState, data: FormData): Promise<ActionState> {
@@ -39,7 +45,7 @@ export async function signupAction(_state: ActionState, data: FormData): Promise
   try { result = await signup({ organizationName: field("organizationName"), name: field("name"), email: field("email"), password: field("password") }); }
   catch (e) { return { message: apiMessage(e) }; }
   const jar = await cookies();
-  jar.set("io_session", result.token, cookieOptions()); jar.set("io_project", result.projectId, cookieOptions());
+  jar.set("io_session", result.token, cookieOptions()); jar.set("io_project", result.projectId, projectCookie());
   redirect("/projects?welcome=1");
 }
 export async function ssoStartAction(_state: ActionState, data: FormData): Promise<ActionState> {
@@ -58,7 +64,7 @@ export async function logoutAction() {
 export async function switchProject(data: FormData) {
   const id = String(data.get("project") ?? ""); const projects = await getProjects();
   if (!projects.some(p => p.id === id)) throw new Error("Proje erişimi bulunamadı.");
-  (await cookies()).set("io_project", id, cookieOptions());
+  (await cookies()).set("io_project", id, projectCookie());
   revalidatePath("/", "layout"); redirect("/");
 }
 export async function createProjectAction(_state: ActionState, data: FormData): Promise<ActionState> {

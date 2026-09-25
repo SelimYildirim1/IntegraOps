@@ -4,7 +4,8 @@ import type { AiAnalysis, AiStatus, AlarmDetail, Assignee } from "@/lib/pilot-ty
 import AiAnalysisPanel from "@/components/ai-analysis";
 import { eventNames, deliveryNames } from "@/lib/pilot-types";
 import { alarmKind, alarmState } from "@/lib/alarms";
-import { Message, PageHead, Time } from "@/components/ui";
+import { Empty, Explain, Message, PageHead, Time } from "@/components/ui";
+import Icon from "@/components/icons";
 import ActionForm from "@/components/action-form";
 import RefreshControls from "@/components/refresh-controls";
 import { adminAction } from "@/app/admin-actions";
@@ -16,25 +17,26 @@ const deliveryTone: Record<string, string> = { sent: "good", dead: "bad", sendin
 export default async function AlarmDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params; let result: AlarmDetail; let canAct = false; let assignees: Assignee[] = []; let me = "";
   let aiStatus: AiStatus | null = null; let analyses: AiAnalysis[] = [];
-  if (!/^[0-9a-f-]{36}$/i.test(id)) return <Message title="Alarm bulunamadı" description="Bağlantıyı kontrol edin." href="/alarms" action="Alarmlara dön" />;
+  if (!/^[0-9a-f-]{36}$/i.test(id)) return <Message title="Alarm bulunamadı" description="Bağlantıyı kontrol edin." href="/alarms" action="Alarmlara dön" icon="bell" />;
   try {
     const access = await getAccess(); canAct = access.role !== "viewer"; me = access.userId;
     [result, assignees] = await Promise.all([api<AlarmDetail>(`/alarms/${id}`), canAct ? getAssignable() : Promise.resolve([])]);
     // AI panel is optional: a failure here must not hide the alarm itself.
     [aiStatus, analyses] = await Promise.all([api<AiStatus>("/ai/status").catch(() => null), api<AiAnalysis[]>(`/alarms/${id}/ai-analyses`).catch(() => [])]);
-  } catch (e) { return <Message title="Alarm yüklenemedi" description={apiMessage(e)} href="/alarms" action="Alarmlara dön" />; }
+  } catch (e) { return <Message title="Alarm yüklenemedi" description={apiMessage(e)} href="/alarms" action="Alarmlara dön" icon="alert" />; }
   const a = result.alarm;
   const s = alarmState(a);
   const transactionHref = `/transactions/${encodeURIComponent(a.flow)}/${encodeURIComponent(a.business_id)}`;
 
   return <>
-    <PageHead crumb={{ href: "/alarms", label: "Alarmlar" }}
+    <PageHead crumb={{ href: "/alarms", label: "Alarmlar" }} icon="bell"
       title={<>{alarmKind(a.kind)}: <span className="mono">{a.business_id}</span></>}
       lede={<>{a.flow} akışında <span className="mono">{a.step_code}</span> adımı için açıldı.{a.is_test && " Test verisi."}</>}>
       <span className={`badge ${s.tone}`}>{s.label}</span>
       {!a.acknowledged_at && !a.resolved_at && canAct && <ActionForm action={adminAction} label="Gördüm olarak işaretle" compact tone="secondary">
         <input type="hidden" name="op" value="ack" /><input type="hidden" name="id" value={id} /></ActionForm>}
-      <Link className="button" href={transactionHref} prefetch={false}>İşlemi aç</Link>
+      {a.link && <a className="button secondary" href={a.link} target="_blank" rel="noopener noreferrer"><Icon name="open" />Kaynak sistemde aç</a>}
+      <Link className="button" href={transactionHref} prefetch={false}><Icon name="activity" />İşlemi aç</Link>
       <RefreshControls />
     </PageHead>
 
@@ -53,6 +55,7 @@ export default async function AlarmDetailPage({ params }: { params: Promise<{ id
             ? "Eksik adımın tamamlandığı bildirildi; alarm bu bildirimle kapandı."
             : "İşlemin durumu değişti; bu gecikme koşulu artık geçerli değil."}</p>}
           {a.error && <div><p className="help" style={{ marginBottom: 6 }}>Kaynak sistemin bildirdiği hata</p><pre className="error-content">{a.error}</pre></div>}
+          {a.instructions && !a.resolved_at && <div className="callout runbook-callout"><strong>Ne yapılmalı ({a.step_name || a.step_code})</strong><p>{a.instructions}</p></div>}
           {canAct && <div className="assign-row">
             {a.assigned_to !== me && <ActionForm action={adminAction} label="Üstlen" compact tone="secondary">
               <input type="hidden" name="op" value="assign" /><input type="hidden" name="id" value={id} /><input type="hidden" name="userId" value="me" /></ActionForm>}
@@ -66,12 +69,14 @@ export default async function AlarmDetailPage({ params }: { params: Promise<{ id
               </select>
             </ActionForm>
           </div>}
-          <p className="help">Gördüm işareti alarmı kapatmaz; yalnızca bir kullanıcının alarmı fark ettiğini kaydeder. Sorumlu, alarmı kimin takip ettiğini gösterir. Kapanış, gelen bildirimlerle belirlenir.</p>
+          <Explain title="Gördüm, sorumlu ve kapanış">
+            <p>Gördüm işareti alarmı kapatmaz; yalnızca bir kullanıcının alarmı fark ettiğini kaydeder. Sorumlu, alarmı kimin takip ettiğini gösterir. Kapanış, gelen bildirimlerle belirlenir.</p>
+          </Explain>
         </div>
       </section>
 
       <section className="surface">
-        <div className="surface-head"><h2>Geçmiş</h2></div>
+        <div className="surface-head"><h2><Icon name="history" size={15} /> Geçmiş</h2></div>
         <div className="surface-body"><ol className="history">
           {result.events.map(e => <li key={e.id}><span className="time"><Time value={e.created_at} /></span>
             <span><strong>{eventNames[e.kind] ?? e.kind}</strong>{e.actor && <span className="who">, {e.actor}</span>}</span></li>)}
@@ -79,10 +84,10 @@ export default async function AlarmDetailPage({ params }: { params: Promise<{ id
       </section>
     </div>
 
-    <AiAnalysisPanel alarmId={id} status={aiStatus} analyses={analyses} canAct={canAct} />
+    <AiAnalysisPanel subject={{ kind: "alarm", id }} status={aiStatus} analyses={analyses} canAct={canAct} isTest={result.alarm.is_test} />
 
     <section className="surface">
-      <div className="surface-head"><div><h2>Notlar</h2><p>İnceleme ve müdahale kayıtları. Notlar alarmla birlikte saklanır ve silinmez.</p></div>
+      <div className="surface-head"><div><h2>Notlar</h2><p>İnceleme ve müdahale kayıtları; alarmla birlikte saklanır.</p></div>
         <span className="count">{result.notes.length} not</span></div>
       <div className="surface-body">
         {result.notes.length === 0 && <p className="muted">Henüz not yok.</p>}
@@ -111,7 +116,7 @@ export default async function AlarmDetailPage({ params }: { params: Promise<{ id
             <input type="hidden" name="op" value="retry" /><input type="hidden" name="id" value={d.id} /></ActionForm>}</div></td>
         </tr>)}
       </tbody></table></div>
-      {result.deliveries.length === 0 && <div className="empty"><h3>Gönderim yok</h3><p>Bu alarm oluşurken etkin bir bildirim kanalı yoktu.</p></div>}
+      {result.deliveries.length === 0 && <Empty icon="mail" title="Gönderim yok">Bu alarm oluşurken etkin bir bildirim kanalı yoktu.</Empty>}
     </section>
   </>;
 }

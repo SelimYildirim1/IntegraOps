@@ -46,7 +46,8 @@ public sealed class PostgresTrackingStore(NpgsqlDataSource dataSource) : ITracki
     {
         InputValidation.Flow(request);
         var flowId = Guid.CreateVersion7();
-        var steps = request.Steps.Select((s, i) => new FlowStep(s.Code, s.Name.Trim(), i, s.MaxDelaySeconds)).ToArray();
+        var steps = request.Steps.Select((s, i) => new FlowStep(s.Code, s.Name.Trim(), i, s.MaxDelaySeconds,
+            Instructions: (s.Instructions ?? "").Trim(), LinkTemplate: (s.Link ?? "").Trim())).ToArray();
         await using var connection = await dataSource.OpenConnectionAsync(ct);
         await using var transaction = await connection.BeginTransactionAsync(ct);
         try
@@ -170,7 +171,7 @@ public sealed class PostgresTrackingStore(NpgsqlDataSource dataSource) : ITracki
             "SELECT count(*) FROM transaction_events WHERE project_id = @projectId AND transaction_id = @id",
             ("projectId", projectId), ("id", id));
         var acceptedCount = checked((int)(long)(await count.ExecuteScalarAsync(ct))!);
-        var projection = TimelineProjector.Project(flow, events, group);
+        var projection = TimelineProjector.Project(flow, events, group, businessId);
         var delay = await PostgresDelayStore.ReadAsync(connection, transaction, projectId, id,
             projection, acceptedCount > events.Count, ct);
         await transaction.CommitAsync(ct);

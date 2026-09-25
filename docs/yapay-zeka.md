@@ -1,7 +1,7 @@
 # IntegraOps — Yapay zekâ desteği
 
 Bu belge yapay zekâ özelliklerinin ürün önerisini, koddaki bağlantı noktalarını ve kurulan altyapıyı bir arada tutar.
-**Model henüz seçilmedi.** Altyapı hazır; model seçildiğinde yalnızca sağlayıcı adaptörü eklenir (bkz. "Model seçildiğinde yapılacaklar").
+**Deneme modeli: Google Gemini `gemini-3.5-flash-lite` (ücretsiz katman, yalnızca sentetik veriyle).** Sağlayıcı adaptörü ve deneme profili eklendi (bkz. "5. Gemini ücretsiz deneme profili" ve `IntegraOps_Gemini_Ucretsiz_Test_Rehberi.md`). Canlı müşteri verisiyle kullanım ayrı karardır.
 
 ---
 
@@ -223,29 +223,60 @@ planda asistan yoksa 403, günlük sınır dolduysa 429 döner; hiçbiri temel i
 
 ### Sınırlar ve ayarlar
 
+Uygulama sınırları bizim deneme korkuluklarımızdır; sağlayıcının kotası değildir. Compose dosyaları `.env` içindeki `AI_*`
+değişkenlerini backend ortamındaki `Ai__*` anahtarlarına aktarır; .NET `.env` dosyasını kendiliğinden okumaz.
+
 | Ortam değişkeni | Varsayılan | Açıklama |
 |---|---|---|
-| `AI_PROVIDER` → `Ai__Provider` | `none` | `none` kapalı, `fake` yerel doğrulama; gerçek sağlayıcı adaptörle eklenir |
-| `AI_MODEL` → `Ai__Model` | — | Model kimliği |
-| `AI_API_KEY` → `Ai__ApiKey` | — | Sağlayıcı anahtarı; yalnızca sunucuda |
-| `AI_DAILY_LIMIT` → `Ai__DailyLimitPerProject` | 200 | Proje başına 24 saatte inceleme sınırı (aşımda 429) |
-| `Ai__MaxOutputTokens` | 1200 | Yanıt uzunluğu sınırı |
-| `Ai__TimeoutSeconds` | 60 | Model çağrısı zaman aşımı (aşımda 502, başarısız kayıt) |
+| `AI_PROVIDER` → `Ai__Provider` | `none` | `none` kapalı, `fake` yerel doğrulama, `gemini` Google Gemini Developer API |
+| `AI_ENABLED` → `Ai__Enabled` | `true` | `false` sağlayıcı yapılandırılmış olsa da asistanı kapalı tutar |
+| `AI_MODEL` → `Ai__Model` | gemini için `gemini-3.5-flash-lite` | Model kimliği |
+| `GEMINI_API_KEY` (veya `AI_API_KEY` → `Ai__ApiKey`) | — | Sağlayıcı anahtarı; yalnızca backend ortamında, panele/Git'e girmez |
+| `AI_TEST_MODE` → `Ai__TestMode` | `false` | `true`: yalnızca `is_test` (TEST- ile başlayan) işlemler incelenir; production ortamında asistan açılmaz |
+| `AI_FREE_TIER_ONLY` → `Ai__FreeTierOnly` | `true` | Yalnızca ücretsiz katmandaki modele izin verir (`Ai__FreeTierModels`, varsayılan `gemini-3.5-flash-lite`) |
+| `AI_FREE_TIER_CONFIRMED` → `Ai__FreeTierConfirmed` | `false` | Yöneticinin AI Studio'daki Free Tier kontrolünü kaydeder; `false` iken sağlayıcıya çağrı yok. Billing garantisi değildir |
+| `AI_DAILY_LIMIT` → `Ai__DailyLimitPerProject` (`Ai__MaxRequestsPer24Hours` da kabul edilir) | 200 | Proje başına son 24 saatte çağrı girişimi sınırı; başarısız çağrı da sayılır (aşımda 429) |
+| `AI_MAX_OUTPUT_TOKENS` → `Ai__MaxOutputTokens` | 1200 | Yanıt uzunluğu sınırı |
+| `AI_TIMEOUT_SECONDS` → `Ai__TimeoutSeconds` | 60 | Model çağrısı zaman aşımı (aşımda 502, başarısız kayıt) |
+| `AI_MAX_CONCURRENT_REQUESTS` → `Ai__MaxConcurrentRequests` | 4 | Proje başına aynı anda süren çağrı |
+| `AI_MIN_SECONDS_BETWEEN_REQUESTS` → `Ai__MinSecondsBetweenRequests` | 0 | Proje başına iki çağrı arası asgari süre (aşımda 429, bekleme süresi mesajda) |
+| `AI_MAX_REQUEST_BYTES` → `Ai__MaxRequestBytes` | 60000 | Sağlayıcıya giden JSON gövdesi sınırı; aşımda çağrı yapılmaz |
+| `AI_CACHE_TTL_SECONDS` → `Ai__CacheTtlSeconds` | 0 | Aynı, değişmemiş bağlam için son tamamlanmış yanıtın yeniden kullanım süresi |
+
+Kota denetimi PostgreSQL'de yapılır: proje kilidi altında sınırlar kontrol edilir, `pending` satır yazılır, sağlayıcı çağrısı
+işlem dışında yapılır ve satır `completed`/`failed` olarak kapatılır. Böylece sayaç yeniden başlatmada veya ikinci API
+kopyasında sıfırlanmaz; aynı bağlama çift tıklama 409 ile tek çağrıya iner. Her analiz `context_hash` taşır: bağlam
+(kanıtlar, sağlayıcı, model, istem sürümü) değiştiğinde eski açıklama panelde **eski** olarak işaretlenir.
 
 ### Doğrulama
 
-- `dotnet test --filter AiTests`: çıktı denetimi (kanıt kimlikleri, neden sınıfı, sınırlar, bozuk yanıt).
-- `scripts/verify_ai.py`: yığın `AI_PROVIDER=fake` ile açıkken 25 uçtan uca kontrol (plan eklentisi dahil).
+- `dotnet test --filter AiTests`: çıktı denetimi (kanıt kimlikleri, neden sınıfı, sınırlar, bozuk yanıt) ve Gemini adaptörü
+  (istek sözleşmesi, engellenen/yarım/boş yanıtın reddi, anahtarın başlıkta gitmesi, 429'da tekrar yok, yönlendirme izlenmez, boyut sınırı).
+- `scripts/verify_ai.py`: yığın `AI_PROVIDER=fake` ile açıkken uçtan uca kontroller (alarm ve işlem incelemesi, plan eklentisi dahil).
+- `scripts/verify_gemini_free.py`: .NET'ten bağımsız, tek dosyalık Gemini bağlantı sınaması; anahtarı diske yazmaz, tek istek yapar.
 
 ---
 
-## 5. Model seçildiğinde yapılacaklar
+## 5. Gemini ücretsiz deneme profili
 
-1. `AiAssistant.cs` içinde sağlayıcı adaptörü: `IAiModelClient` uygulayan sınıf (HTTP istemcisi, anahtar, model, jeton sayıları).
-2. `AiSetup.AddAi` içindeki `switch`e sağlayıcı adı.
-3. `.env` / `.env.live` içine `AI_PROVIDER`, `AI_MODEL`, `AI_API_KEY`.
-4. Gerçek alarmlarla istem ayarı; `prompt_version` artırılır, eski analizler hangi istemle üretildiğini korur.
-5. Pilot ölçümleri: inceleme başına süre, faydalı oranı, "Kanıta bağlanmadı" bulgu oranı, jeton maliyeti.
+Ayrıntılı gerekçe ve Google hesabı kurulumu: `IntegraOps_Gemini_Ucretsiz_Test_Rehberi.md`. Kodda karşılığı:
 
-Seçimde dikkat edilecekler: Türkçe kalitesi, yapılandırılmış JSON çıktısı, veri işleme ve saklama koşulları
-(müşteri verisinin eğitimde kullanılmaması, bölge), yanıt süresi ve inceleme başına maliyet.
+| Bileşen | Yeri |
+|---|---|
+| Sağlayıcı arayüzü | `IAiModelClient` (`AiAssistant.cs`); `Reason` alanı asistanın neden kapalı olduğunu panele taşır |
+| Gemini uyarlayıcısı | `GeminiAiClient`: `generateContent`, JSON kipi, tek aday, `thinkingLevel=MINIMAL`, anahtar `x-goog-api-key` başlığında, yönlendirme yok, yanıt 64 KB sınırı, düşünce parçaları atılır, `finishReason=STOP` şartı |
+| Yapılandırma kapıları | `AiSetup.Gemini`: anahtar yoksa, Free Tier onayı yoksa, model ücretsiz listede değilse veya deneme profili production'daysa asistan **kapalı** kalır; API çalışmaya devam eder |
+| Sentetik veri kuralı | `PostgresAiStore.Analyze`: `Ai__TestMode=true` iken `transactions.is_test=false` olan işlem/alarm için 403, sağlayıcıya çağrı yok |
+| Kota ve önbellek | `PostgresAiStore.Analyze` rezervasyon bloğu; migration `016_ai_gemini.sql` (`pending` durumu, `context_hash`) |
+| İşlem incelemesi | `GET/POST /api/v1/flows/{flow}/transactions/{transactionId}/ai-analyses`; panelde işlem detayında ayrı "Yapay zekâ ile inceleme" alanı |
+| Bağlantı betiği | `scripts/verify_gemini_free.py` (rehber 6. madde) |
+
+Açma sırası (yerel): `.env` içine `AI_PROVIDER=gemini`, `GEMINI_API_KEY=...`, rehberdeki sınırlar; AI Studio'da Free Tier kontrolünden
+sonra `AI_FREE_TIER_CONFIRMED=true`; `docker compose up -d --build migrate api`. Panelde `TEST-` ile başlayan bir işlemi açıp
+"Yapay zekâ ile incele" düğmesine basın. Kapalı durumda panel nedenini yazar.
+
+Hata davranışı: 429 kota → mesaj gösterilir, otomatik tekrar ve ücretli geçiş yok; 401/403 → anahtar/proje kontrolü;
+404 → model adı/erişim kontrolü, alternatif model seçilmez; ağ/zaman aşımı → yalnızca AI alanı hata gösterir.
+
+Sonraki adımlar: gerçek alarmlarla istem ayarı (`prompt_version` artırılır), pilot ölçümleri (süre, faydalı oranı,
+"Kanıta bağlanmadı" oranı, jeton kullanımı) ve canlı kullanım için veri işleme koşullarının ayrıca değerlendirilmesi.
