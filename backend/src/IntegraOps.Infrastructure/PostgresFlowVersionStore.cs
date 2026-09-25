@@ -9,10 +9,11 @@ using static IntegraOps.Infrastructure.PilotSecurity;
 namespace IntegraOps.Infrastructure;
 
 public sealed record VersionStepInput(string? Code, string? Name, int? MaxDelaySeconds, Dictionary<string, int>? Overrides,
-    int? Stage = null, string? Kind = null, List<string>? Groups = null);
+    int? Stage = null, string? Kind = null, List<string>? Groups = null, string? Instructions = null, string? Link = null);
 public sealed record VersionInput(string? Name, List<VersionStepInput>? Steps, Guid? CalendarId, string? Note);
 public sealed record PublishInput(string? EffectiveFrom);
 public sealed record FlowNameInput(string Name);
+public sealed record TemplateInput(string? Template, string? Code, string? Name);
 public sealed record HolidayInput(string Day, string? Name);
 public sealed record CalendarInput(string? Name, string? TimeZone, int[]? WorkDays, string? StartTime, string? EndTime, List<HolidayInput>? Holidays);
 
@@ -46,6 +47,7 @@ public sealed partial class PostgresFlowVersionStore(NpgsqlDataSource source)
             steps = effective?.Steps.Select(Step) ?? [],
             versions,
             hasDraft = versions.Any(v => (string)v["state"]! == "draft"),
+            demoCount = (long)(await Value(c, null, "SELECT count(*) FROM transactions WHERE flow_id=@f AND business_id LIKE 'DEMO-%'", ct, ("f", flowId)))!,
         };
     }
 
@@ -72,8 +74,9 @@ public sealed partial class PostgresFlowVersionStore(NpgsqlDataSource source)
         return new { from, to, changes = FlowDiff.Compare(left!, right!) };
     }
 
-    private static object Step(FlowStep s) => new { code = s.Code, name = s.Name, position = s.Position, maxDelaySeconds = s.MaxDelaySeconds,
-        overrides = s.Overrides ?? new Dictionary<string, int>(), stage = s.EffectiveStage, kind = s.Kind, groups = s.Groups ?? [] };
+    internal static object Step(FlowStep s) => new { code = s.Code, name = s.Name, position = s.Position, maxDelaySeconds = s.MaxDelaySeconds,
+        overrides = s.Overrides ?? new Dictionary<string, int>(), stage = s.EffectiveStage, kind = s.Kind, groups = s.Groups ?? [],
+        instructions = s.Instructions, link = s.LinkTemplate };
 
     private static async Task<(Dictionary<string, object?> Flow, Dictionary<string, object?> Version)> Find(NpgsqlConnection c, NpgsqlTransaction? tx,
         Guid project, string code, int number, CancellationToken ct, bool forUpdate = false)
@@ -84,6 +87,33 @@ public sealed partial class PostgresFlowVersionStore(NpgsqlDataSource source)
             ("f", flows[0]["id"]), ("v", number));
         if (versions.Count == 0) throw new PilotHttpException(404, "Sürüm bulunamadı.");
         return (flows[0], versions[0]);
+    }
+
+    // ---------- Templates ----------
+
+    /// <summary>Copies a catalog template into the project as a new flow with version 1 published.</summary>
+    public async Task<object> CreateFromTemplate(ProjectIdentity actor, TemplateInput input, CancellationToken ct)
+    {
+        var template = FlowTemplates.Find(input.Template) ?? throw new PilotHttpException(404, "Şablon bulunamadı.");
+        var code = string.IsNullOrWhiteSpace(input.Code) ? template.Code : input.Code.Trim();
+        if (!CodePattern().IsMatch(code)) throw new PilotHttpException(400, "Akış kodu küçük harfle başlayan, en fazla 64 karakterlik harf/rakam/tire olmalı.");
+        var name = string.IsNullOrWhiteSpace(input.Name) ? template.Name : Text(input.Name, 160, "Akış adı");
+        await using var c = await source.OpenConnectionAsync(ct);
+        await using var tx = await c.BeginTransactionAsync(ct);
+        var flowId = Guid.CreateVersion7(); var versionId = Guid.CreateVersion7();
+        try
+        {
+            await Run(c, tx, """
+                INSERT INTO flows (id, project_id, code, name) VALUES (@id, @p, @code, @name);
+                INSERT INTO flow_versions (id, flow_id, version, state, effective_from, published_at, note, created_by)
+                VALUES (@v, @id, 1, 'published', clock_timestamp(), clock_timestamp(), @note, @u)
+                """, ct, ("id", flowId), ("p", actor.ProjectId), ("code", code), ("name", name), ("v", versionId), ("note", $"{template.Name} şablonundan"), ("u", actor.UserId));
+        }
+        catch (PostgresException ex) when (ex.SqlState == PostgresErrorCodes.UniqueViolation) { throw new PilotHttpException(409, "Bu projede aynı kodla bir akış zaten var."); }
+        await FlowVersions.InsertStepsAsync(c, tx, versionId, template.Steps, ct);
+        await Audit(c, tx, actor.ProjectId, actor.UserId, "flow.template", $"{code}<{template.Code}", ct);
+        await tx.CommitAsync(ct);
+        return new { code, name, template = template.Code, steps = template.Steps.Count };
     }
 
     // ---------- Drafts ----------
@@ -178,7 +208,7 @@ public sealed partial class PostgresFlowVersionStore(NpgsqlDataSource source)
         await tx.CommitAsync(ct);
     }
 
-    private static IReadOnlyList<FlowStep> ValidateSteps(List<VersionStepInput>? input)
+    public static IReadOnlyList<FlowStep> ValidateSteps(List<VersionStepInput>? input)
     {
         if (input is null || input.Count is < 2 or > 30) throw new PilotHttpException(400, "Akış 2–30 sıralı adımdan oluşmalı.");
         var codes = new HashSet<string>(StringComparer.Ordinal);
@@ -218,7 +248,11 @@ public sealed partial class PostgresFlowVersionStore(NpgsqlDataSource source)
                     overrides[group] = seconds;
                 }
             }
-            steps.Add(new FlowStep(code, name, i, s.MaxDelaySeconds, overrides, stage, kind, groups));
+            var instructions = (s.Instructions ?? "").Trim();
+            if (instructions.Length > 2000) throw new PilotHttpException(400, $"{i + 1}. adımın talimatı en fazla 2000 karakter olabilir.");
+            var link = (s.Link ?? "").Trim();
+            if (StepLinks.Validate(link) is { } linkError) throw new PilotHttpException(400, $"{i + 1}. adım: {linkError}");
+            steps.Add(new FlowStep(code, name, i, s.MaxDelaySeconds, overrides, stage, kind, groups, instructions, link));
         }
         return steps;
     }

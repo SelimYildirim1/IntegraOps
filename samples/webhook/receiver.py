@@ -13,6 +13,7 @@ root = Path(os.environ.get("RECEIVER_DATA", "/data"))
 root.mkdir(parents=True, exist_ok=True)
 db = sqlite3.connect(root / "receipts.sqlite")
 db.execute("CREATE TABLE IF NOT EXISTS receipts(id TEXT PRIMARY KEY, body TEXT NOT NULL, received_at REAL NOT NULL)")
+db.execute("CREATE TABLE IF NOT EXISTS chat(id TEXT PRIMARY KEY, body TEXT NOT NULL, received_at REAL NOT NULL)")
 db.commit()
 secret = os.environ["WEBHOOK_SECRET"].encode()
 if len(secret) < 32:
@@ -32,6 +33,9 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(data)
 
     def do_GET(self):
+        if self.path == "/chat":
+            rows = db.execute("SELECT id,body,received_at FROM chat ORDER BY received_at DESC LIMIT 100").fetchall()
+            return self.reply(200, [{"id": r[0], "kind": r[0].split(":")[0], "body": json.loads(r[1]), "receivedAt": r[2]} for r in rows])
         if self.path != "/receipts":
             return self.reply(404, {})
         rows = db.execute("SELECT id,body,received_at FROM receipts ORDER BY received_at DESC LIMIT 100").fetchall()
@@ -48,6 +52,12 @@ class Handler(BaseHTTPRequestHandler):
             if self.path == "/test/fail-next":
                 failures = max(0, min(100, int(json.loads(body).get("count", 1))))
                 return self.reply(200, {"failures": failures})
+            # Local stand-ins for Slack and Teams incoming webhooks: the URL is the credential, no signature.
+            if self.path in ("/slack", "/teams"):
+                delivery = self.headers.get("X-IntegraOps-Delivery", "")
+                db.execute("INSERT OR IGNORE INTO chat(id,body,received_at) VALUES(?,?,?)", (self.path[1:] + ":" + delivery, body.decode(), time.time()))
+                db.commit()
+                return self.reply(200, {"ok": True})
             if self.path != "/hook":
                 return self.reply(404, {})
             delivery = str(uuid.UUID(self.headers.get("X-IntegraOps-Delivery", "")))

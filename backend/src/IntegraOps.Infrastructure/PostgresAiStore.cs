@@ -1,4 +1,6 @@
 using System.Diagnostics;
+using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using IntegraOps.Application;
@@ -9,8 +11,10 @@ using static IntegraOps.Infrastructure.PilotDb;
 namespace IntegraOps.Infrastructure;
 
 /// <summary>
-/// Evidence-based alarm analysis. The backend gathers the facts (alarm, timeline, deliveries, notes, similar alarms),
-/// the model only explains them, and every answer is stored with the evidence it was given.
+/// Evidence-based analysis of an alarm or a transaction. The backend gathers the facts (alarm, timeline, deliveries,
+/// notes, similar alarms), the model only explains them, and every answer is stored with the evidence it was given.
+/// Calls are reserved in PostgreSQL before the provider is contacted, so the daily cap, spacing and concurrency
+/// limits hold across API replicas and restarts; a failed call still counts because the provider may have processed it.
 /// </summary>
 public sealed class PostgresAiStore(NpgsqlDataSource source, ITrackingStore tracking, IAiModelClient model, AiLimits limits,
     ILogger<PostgresAiStore> logger)
@@ -18,64 +22,42 @@ public sealed class PostgresAiStore(NpgsqlDataSource source, ITrackingStore trac
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
     public static readonly string[] Ratings = ["useful", "wrong", "incomplete"];
 
+    /// <summary>What the model is asked about; the transaction's synthetic marker decides test-mode eligibility.</summary>
+    private sealed record Subject(string Kind, Guid Id, Guid ProjectId, string Flow, string BusinessId, bool IsTest);
+
     public async Task<object> Status(Guid organization, Guid project, CancellationToken ct)
     {
         await using var c = await source.OpenConnectionAsync(ct);
         var plan = await PostgresOrganizationStore.AiEnabledFor(c, organization, ct);
-        // enabled = usable right now; configured and planEnabled explain why not.
-        return new { enabled = model.Enabled && plan, configured = model.Enabled, planEnabled = plan, provider = model.Provider, model = model.Model,
-            dailyLimit = limits.DailyPerProject, usedToday = model.Enabled ? await UsedToday(c, project, ct) : 0 };
+        DateTime? nextAllowed = null;
+        if (model.Enabled && limits.MinInterval > TimeSpan.Zero && await LastRequestAt(c, null, project, ct) is DateTime last)
+            nextAllowed = last + limits.MinInterval > DateTime.UtcNow ? last + limits.MinInterval : null;
+        // enabled = usable right now; configured, planEnabled and reason explain why not.
+        return new
+        {
+            enabled = model.Enabled && plan, configured = model.Enabled, planEnabled = plan, reason = model.Enabled ? null : model.Reason,
+            provider = model.Provider, model = model.Model, testMode = limits.TestMode,
+            dailyLimit = limits.DailyPerProject, usedToday = model.Enabled ? await UsedToday(c, null, project, ct) : 0,
+            minSecondsBetweenRequests = (int)limits.MinInterval.TotalSeconds, cacheSeconds = (int)limits.CacheTtl.TotalSeconds, nextAllowedAt = nextAllowed,
+        };
     }
 
-    public async Task<object> AnalyzeAlarm(ProjectIdentity actor, Guid alarmId, CancellationToken ct)
-    {
-        if (!model.Enabled) throw new PilotHttpException(503, "Yapay zekâ henüz yapılandırılmadı.");
-        await using var c = await source.OpenConnectionAsync(ct);
-        if (!await PostgresOrganizationStore.AiEnabledFor(c, actor.OrganizationId, ct))
-            throw new PilotHttpException(403, "Yapay zekâ asistanı bu organizasyonun planında yok.");
-        if (await UsedToday(c, actor.ProjectId, ct) >= limits.DailyPerProject)
-            throw new PilotHttpException(429, "Bu proje için günlük yapay zekâ inceleme sınırına ulaşıldı.");
-        var evidence = await AlarmEvidence(c, actor.ProjectId, alarmId, ct);
-        var ids = evidence.Select(e => e!["id"]!.GetValue<string>()).ToHashSet();
-        var prompt = new AiPrompt(AlarmInsightPrompt.System, new JsonObject { ["evidence"] = evidence }.ToJsonString(), limits.MaxOutputTokens);
+    public Task<Dictionary<string, object?>> AnalyzeAlarm(ProjectIdentity actor, Guid alarmId, CancellationToken ct) =>
+        Analyze(actor, (c, t) => AlarmSubject(c, actor.ProjectId, alarmId, t), ct);
 
-        var watch = Stopwatch.StartNew();
-        AiCompletion? completion = null; AlarmInsight? insight = null; string? error = null;
-        try
-        {
-            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
-            timeout.CancelAfter(limits.Timeout);
-            completion = await model.CompleteAsync(prompt, timeout.Token);
-            insight = AlarmInsightPrompt.Parse(completion.Text, ids);
-        }
-        catch (Exception ex) when (ex is not PilotHttpException && !ct.IsCancellationRequested)
-        {
-            // Store the failure class only; provider responses may echo the prompt.
-            error = ex is FormatException or JsonException ? "Model yanıtı beklenen biçimde değil." :
-                ex is OperationCanceledException ? "Model zaman aşımına uğradı." : "Model çağrısı başarısız: " + ex.GetType().Name;
-            logger.LogWarning("AI alarm analizi başarısız. Proje: {Project} Alarm: {Alarm} Neden: {Reason}", actor.ProjectId, alarmId, error);
-        }
-        var id = Guid.CreateVersion7();
-        await using (var tx = await c.BeginTransactionAsync(ct))
-        {
-            await Run(c, tx, """
-                INSERT INTO ai_analyses(id,project_id,subject_kind,subject_id,requested_by,provider,model,prompt_version,status,evidence,result,error,input_tokens,output_tokens,duration_ms)
-                VALUES (@id,@p,'alarm',@s,CAST(@u AS uuid),@provider,@model,@v,@status,CAST(@e AS jsonb),CAST(@r AS jsonb),@err,@in,@out,@ms)
-                """, ct, ("id", id), ("p", actor.ProjectId), ("s", alarmId), ("u", actor.UserId), ("provider", model.Provider), ("model", model.Model),
-                ("v", AlarmInsightPrompt.Version), ("status", insight is null ? "failed" : "completed"), ("e", evidence.ToJsonString()),
-                ("r", insight is null ? null : JsonSerializer.Serialize(insight, Json)), ("err", error),
-                ("in", completion?.InputTokens), ("out", completion?.OutputTokens), ("ms", (int)watch.ElapsedMilliseconds));
-            await Audit(c, tx, actor.ProjectId, actor.UserId, "ai.alarm_analysis", alarmId.ToString(), ct);
-            await tx.CommitAsync(ct);
-        }
-        if (insight is null) throw new PilotHttpException(502, "Yapay zekâ yanıtı alınamadı. " + error);
-        return (await Analyses(c, actor, alarmId, id, ct))[0];
-    }
+    public Task<Dictionary<string, object?>> AnalyzeTransaction(ProjectIdentity actor, string flow, string transactionId, CancellationToken ct) =>
+        Analyze(actor, (c, t) => TransactionSubject(c, actor.ProjectId, flow, transactionId, t), ct);
 
     public async Task<List<Dictionary<string, object?>>> AlarmAnalyses(ProjectIdentity actor, Guid alarmId, CancellationToken ct)
     {
         await using var c = await source.OpenConnectionAsync(ct);
-        return await Analyses(c, actor, alarmId, null, ct);
+        return await History(c, actor, await AlarmSubject(c, actor.ProjectId, alarmId, ct), ct);
+    }
+
+    public async Task<List<Dictionary<string, object?>>> TransactionAnalyses(ProjectIdentity actor, string flow, string transactionId, CancellationToken ct)
+    {
+        await using var c = await source.OpenConnectionAsync(ct);
+        return await History(c, actor, await TransactionSubject(c, actor.ProjectId, flow, transactionId, ct), ct);
     }
 
     public async Task Feedback(ProjectIdentity actor, Guid analysisId, string? rating, string? comment, CancellationToken ct)
@@ -93,57 +75,195 @@ public sealed class PostgresAiStore(NpgsqlDataSource source, ITrackingStore trac
         if (changed == 0) throw new PilotHttpException(404, "Analiz bulunamadı.");
     }
 
-    private static async Task<int> UsedToday(NpgsqlConnection c, Guid project, CancellationToken ct) => (int)(long)(await Value(c, null,
+    private async Task<Dictionary<string, object?>> Analyze(ProjectIdentity actor, Func<NpgsqlConnection, CancellationToken, Task<Subject>> resolve, CancellationToken ct)
+    {
+        if (!model.Enabled) throw new PilotHttpException(503, model.Reason ?? "Yapay zekâ henüz yapılandırılmadı.");
+        await using var c = await source.OpenConnectionAsync(ct);
+        if (!await PostgresOrganizationStore.AiEnabledFor(c, actor.OrganizationId, ct))
+            throw new PilotHttpException(403, "Yapay zekâ asistanı bu organizasyonun planında yok.");
+        var subject = await resolve(c, ct);
+        // Test profile: only server-recognized synthetic transactions (TEST- prefix) may leave the system.
+        if (limits.TestMode && !subject.IsTest)
+            throw new PilotHttpException(403, "Deneme profilinde yalnızca sentetik işlemler (TEST- ile başlayan) incelenebilir; gerçek veri sağlayıcıya gönderilmez.");
+        var evidence = await Evidence(c, subject, ct);
+        var ids = evidence.Select(e => e!["id"]!.GetValue<string>()).ToHashSet();
+        var hash = ContextHash(actor, subject, evidence);
+        var prompt = new AiPrompt(InsightPrompt.System, new JsonObject { ["subject"] = subject.Kind, ["evidence"] = evidence }.ToJsonString(), limits.MaxOutputTokens);
+
+        // Reservation: one project at a time checks its limits and inserts a pending row; the provider is called afterwards, outside any transaction.
+        var id = Guid.CreateVersion7();
+        var grace = limits.Timeout + TimeSpan.FromSeconds(30);
+        await using (var tx = await c.BeginTransactionAsync(ct))
+        {
+            await Value(c, tx, "SELECT pg_advisory_xact_lock(hashtext(@k))", ct, ("k", "ai:" + actor.ProjectId));
+            if (limits.CacheTtl > TimeSpan.Zero && await Value(c, tx, """
+                SELECT id FROM ai_analyses WHERE project_id=@p AND context_hash=@h AND status='completed'
+                  AND created_at > clock_timestamp() - CAST(@ttl AS interval) ORDER BY created_at DESC LIMIT 1
+                """, ct, ("p", actor.ProjectId), ("h", hash), ("ttl", limits.CacheTtl)) is Guid cached)
+            {
+                await tx.CommitAsync(ct);
+                logger.LogInformation("AI incelemesi önbellekten verildi. Proje: {Project} Konu: {Kind}/{Subject}", actor.ProjectId, subject.Kind, subject.Id);
+                return (await Listing(c, actor, subject, cached, hash, ct))[0];
+            }
+            var pending = await Rows(c, tx, """
+                SELECT context_hash FROM ai_analyses WHERE project_id=@p AND status='pending' AND created_at > clock_timestamp() - CAST(@grace AS interval)
+                """, ct, ("p", actor.ProjectId), ("grace", grace));
+            if (pending.Any(r => (string?)r["context_hash"] == hash))
+                throw new PilotHttpException(409, "Aynı bağlam için inceleme zaten sürüyor; birkaç saniye sonra sayfayı yenileyin.");
+            if (pending.Count >= limits.MaxConcurrent)
+                throw new PilotHttpException(429, $"Aynı anda en fazla {limits.MaxConcurrent} yapay zekâ incelemesi çalışabilir; sürenin bitmesini bekleyin.");
+            if (await UsedToday(c, tx, actor.ProjectId, ct) >= limits.DailyPerProject)
+                throw new PilotHttpException(429, $"Bu proje için son 24 saatteki yapay zekâ çağrı sınırına ({limits.DailyPerProject}) ulaşıldı.");
+            if (limits.MinInterval > TimeSpan.Zero && await LastRequestAt(c, tx, actor.ProjectId, ct) is DateTime last)
+            {
+                var wait = last + limits.MinInterval - DateTime.UtcNow;
+                if (wait > TimeSpan.Zero)
+                    throw new PilotHttpException(429, $"Yapay zekâ çağrıları arasında en az {(int)limits.MinInterval.TotalSeconds} saniye bekleniyor; {Math.Ceiling(wait.TotalSeconds):0} saniye sonra tekrar deneyin.");
+            }
+            await Run(c, tx, """
+                INSERT INTO ai_analyses(id,project_id,subject_kind,subject_id,requested_by,provider,model,prompt_version,status,evidence,context_hash,duration_ms)
+                VALUES (@id,@p,@kind,@s,CAST(@u AS uuid),@provider,@model,@v,'pending',CAST(@e AS jsonb),@h,0)
+                """, ct, ("id", id), ("p", actor.ProjectId), ("kind", subject.Kind), ("s", subject.Id), ("u", actor.UserId), ("provider", model.Provider),
+                ("model", model.Model), ("v", InsightPrompt.Version), ("e", evidence.ToJsonString()), ("h", hash));
+            await tx.CommitAsync(ct);
+        }
+
+        var watch = Stopwatch.StartNew();
+        AiCompletion? completion = null; AiInsight? insight = null; string? error = null;
+        try
+        {
+            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            timeout.CancelAfter(limits.Timeout);
+            completion = await model.CompleteAsync(prompt, timeout.Token);
+            insight = InsightPrompt.Parse(completion.Text, ids);
+        }
+        catch (Exception ex) when (ex is not PilotHttpException)
+        {
+            // Store the failure class only; provider responses may echo the prompt or carry the key.
+            error = ex switch
+            {
+                AiProviderException p => p.Message,
+                FormatException or JsonException => "Model yanıtı beklenen biçimde değil.",
+                OperationCanceledException when ct.IsCancellationRequested => "İstek iptal edildi.",
+                OperationCanceledException => "Model zaman aşımına uğradı.",
+                _ => "Model çağrısı başarısız: " + ex.GetType().Name,
+            };
+            logger.LogWarning("AI incelemesi başarısız. Proje: {Project} Konu: {Kind}/{Subject} Neden: {Reason}", actor.ProjectId, subject.Kind, subject.Id, error);
+        }
+        // The reservation is always closed, even when the caller went away.
+        var done = ct.IsCancellationRequested ? CancellationToken.None : ct;
+        await using (var tx = await c.BeginTransactionAsync(done))
+        {
+            await Run(c, tx, """
+                UPDATE ai_analyses SET status=@status,result=CAST(@r AS jsonb),error=@err,input_tokens=@in,output_tokens=@out,duration_ms=@ms WHERE id=@id
+                """, done, ("id", id), ("status", insight is null ? "failed" : "completed"),
+                ("r", insight is null ? null : JsonSerializer.Serialize(insight, Json)), ("err", error),
+                ("in", completion?.InputTokens), ("out", completion?.OutputTokens), ("ms", (int)watch.ElapsedMilliseconds));
+            await Audit(c, tx, actor.ProjectId, actor.UserId, "ai." + subject.Kind + "_analysis", subject.Id.ToString(), done);
+            await tx.CommitAsync(done);
+        }
+        if (insight is null) throw new PilotHttpException(502, "Yapay zekâ yanıtı alınamadı. " + error);
+        return (await Listing(c, actor, subject, id, hash, ct))[0];
+    }
+
+    private async Task<List<Dictionary<string, object?>>> History(NpgsqlConnection c, ProjectIdentity actor, Subject subject, CancellationToken ct)
+    {
+        // The current context hash marks analyses whose evidence has since changed as stale.
+        var current = ContextHash(actor, subject, await Evidence(c, subject, ct));
+        return await Listing(c, actor, subject, null, current, ct);
+    }
+
+    private static async Task<int> UsedToday(NpgsqlConnection c, NpgsqlTransaction? tx, Guid project, CancellationToken ct) => (int)(long)(await Value(c, tx,
         "SELECT count(*) FROM ai_analyses WHERE project_id=@p AND created_at > clock_timestamp() - interval '1 day'", ct, ("p", project)))!;
 
-    private static async Task<List<Dictionary<string, object?>>> Analyses(NpgsqlConnection c, ProjectIdentity actor, Guid alarmId, Guid? only, CancellationToken ct)
+    private static async Task<DateTime?> LastRequestAt(NpgsqlConnection c, NpgsqlTransaction? tx, Guid project, CancellationToken ct) =>
+        await Value(c, tx, "SELECT max(created_at) FROM ai_analyses WHERE project_id=@p", ct, ("p", project)) as DateTime?;
+
+    private static async Task<Subject> AlarmSubject(NpgsqlConnection c, Guid project, Guid alarmId, CancellationToken ct)
     {
         var rows = await Rows(c, null, """
-            SELECT a.id,a.created_at,a.provider,a.model,a.prompt_version,a.status,a.error,a.duration_ms,a.evidence::text evidence,a.result::text result,
+            SELECT f.code flow,t.business_id,t.is_test FROM alarms a JOIN transactions t ON t.id=a.transaction_id JOIN flows f ON f.id=t.flow_id
+            WHERE a.project_id=@p AND a.id=@id
+            """, ct, ("p", project), ("id", alarmId));
+        if (rows.Count == 0) throw new PilotHttpException(404, "Alarm bu projede bulunamadı.");
+        var r = rows[0];
+        return new Subject("alarm", alarmId, project, (string)r["flow"]!, (string)r["business_id"]!, (bool)r["is_test"]!);
+    }
+
+    private static async Task<Subject> TransactionSubject(NpgsqlConnection c, Guid project, string flow, string transactionId, CancellationToken ct)
+    {
+        var rows = await Rows(c, null, """
+            SELECT t.id,t.is_test FROM transactions t JOIN flows f ON f.id=t.flow_id WHERE t.project_id=@p AND f.code=@flow AND t.business_id=@b
+            """, ct, ("p", project), ("flow", flow), ("b", transactionId));
+        if (rows.Count == 0) throw new PilotHttpException(404, "İşlem bu projede bulunamadı.");
+        var id = (Guid)rows[0]["id"]!;
+        return new Subject("transaction", id, project, flow, transactionId, (bool)rows[0]["is_test"]!);
+    }
+
+    private static async Task<List<Dictionary<string, object?>>> Listing(NpgsqlConnection c, ProjectIdentity actor, Subject subject, Guid? only, string currentHash, CancellationToken ct)
+    {
+        var rows = await Rows(c, null, """
+            SELECT a.id,a.created_at,a.subject_kind,a.provider,a.model,a.prompt_version,a.status,a.error,a.duration_ms,a.input_tokens,a.output_tokens,
+                a.context_hash,a.evidence::text evidence,a.result::text result,
                 u.name requested_by,f.rating my_rating,
                 (SELECT count(*) FILTER (WHERE rating='useful') FROM ai_feedback WHERE analysis_id=a.id) useful_count,
                 (SELECT count(*) FILTER (WHERE rating<>'useful') FROM ai_feedback WHERE analysis_id=a.id) critical_count
             FROM ai_analyses a LEFT JOIN app_users u ON u.id=a.requested_by
             LEFT JOIN ai_feedback f ON f.analysis_id=a.id AND f.user_id=CAST(@u AS uuid)
-            WHERE a.project_id=@p AND a.subject_kind='alarm' AND a.subject_id=@s AND (CAST(@only AS uuid) IS NULL OR a.id=@only)
+            WHERE a.project_id=@p AND a.subject_kind=@kind AND a.subject_id=@s AND (CAST(@only AS uuid) IS NULL OR a.id=@only)
             ORDER BY a.created_at DESC LIMIT 10
-            """, ct, ("p", actor.ProjectId), ("s", alarmId), ("u", actor.UserId), ("only", only));
+            """, ct, ("p", actor.ProjectId), ("kind", subject.Kind), ("s", subject.Id), ("u", actor.UserId), ("only", only));
         foreach (var row in rows)
         {
             row["evidence"] = JsonNode.Parse((string)row["evidence"]!);
             row["result"] = row["result"] is string r ? JsonNode.Parse(r) : null;
+            // A completed answer belongs to the evidence it saw; new events make it stale rather than silently current.
+            row["stale"] = (string)row["status"]! == "completed" && (string?)row["context_hash"] != currentHash;
+            row.Remove("context_hash");
         }
         return rows;
     }
 
-    /// <summary>The facts the model may use, each with a short id it must cite.</summary>
-    private async Task<JsonArray> AlarmEvidence(NpgsqlConnection c, Guid project, Guid alarmId, CancellationToken ct)
+    /// <summary>Same organization, project, subject, provider, model, prompt and (non-volatile) evidence → same hash.</summary>
+    private string ContextHash(ProjectIdentity actor, Subject subject, JsonArray evidence)
     {
-        var alarms = await Rows(c, null, """
-            SELECT a.kind,a.step_code,a.error,a.deadline_at,a.opened_at,a.last_seen_at,a.resolved_at,a.resolution,a.acknowledged_at,
-                a.assigned_to IS NOT NULL assigned,a.transaction_id,t.flow_id,f.code flow,t.business_id
-            FROM alarms a JOIN transactions t ON t.id=a.transaction_id JOIN flows f ON f.id=t.flow_id
-            WHERE a.project_id=@p AND a.id=@id
-            """, ct, ("p", project), ("id", alarmId));
-        if (alarms.Count == 0) throw new PilotHttpException(404, "Alarm bu projede bulunamadı.");
-        var a = alarms[0];
-        var evidence = new JsonArray(Item("A1", "alarm", new
-        {
-            kind = a["kind"], step = a["step_code"], error = Clip(a["error"], 500), deadline_at = a["deadline_at"], opened_at = a["opened_at"],
-            last_checked_at = a["last_seen_at"], resolved_at = a["resolved_at"], resolution = a["resolution"],
-            acknowledged = a["acknowledged_at"] is not null, assigned = a["assigned"],
-        }));
+        var stable = (JsonArray)JsonNode.Parse(evidence.ToJsonString())!;
+        foreach (var item in stable) (item as JsonObject)?.Remove("last_checked_at");
+        var text = string.Join('|', actor.OrganizationId, actor.ProjectId, subject.Kind, subject.Id, model.Provider, model.Model, InsightPrompt.Version, stable.ToJsonString());
+        return Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(text)));
+    }
 
-        var view = await tracking.GetTransactionAsync(project, (string)a["flow"]!, (string)a["business_id"]!, ct);
+    /// <summary>The facts the model may use, each with a short id it must cite.</summary>
+    private async Task<JsonArray> Evidence(NpgsqlConnection c, Subject subject, CancellationToken ct)
+    {
+        var evidence = new JsonArray();
+        var alarms = await Rows(c, null, subject.Kind == "alarm" ? """
+            SELECT a.id,a.kind,a.step_code,a.error,a.deadline_at,a.opened_at,a.last_seen_at,a.resolved_at,a.resolution,a.acknowledged_at,a.assigned_to IS NOT NULL assigned,t.flow_id
+            FROM alarms a JOIN transactions t ON t.id=a.transaction_id WHERE a.project_id=@p AND a.id=@id
+            """ : """
+            SELECT a.id,a.kind,a.step_code,a.error,a.deadline_at,a.opened_at,a.last_seen_at,a.resolved_at,a.resolution,a.acknowledged_at,a.assigned_to IS NOT NULL assigned,t.flow_id
+            FROM alarms a JOIN transactions t ON t.id=a.transaction_id WHERE a.project_id=@p AND a.transaction_id=@id
+            ORDER BY a.resolved_at IS NOT NULL, a.opened_at DESC LIMIT 5
+            """, ct, ("p", subject.ProjectId), ("id", subject.Id));
+        var n = 0;
+        foreach (var a in alarms)
+            evidence.Add(Item($"A{++n}", "alarm", new
+            {
+                kind = a["kind"], step = a["step_code"], error = Clip(a["error"], 500), deadline_at = a["deadline_at"], opened_at = a["opened_at"],
+                last_checked_at = a["last_seen_at"], resolved_at = a["resolved_at"], resolution = a["resolution"],
+                acknowledged = a["acknowledged_at"] is not null, assigned = a["assigned"],
+            }));
+
+        var view = await tracking.GetTransactionAsync(subject.ProjectId, subject.Flow, subject.BusinessId, ct);
         if (view is not null)
         {
             evidence.Add(Item("T1", "transaction", new
             {
                 flow = view.Flow, transaction_id = view.TransactionId, status = view.Status.ToString(), group = view.Group, flow_version = view.FlowVersion,
-                calendar = view.Calendar, accepted_events = view.AcceptedEventCount, processed_events = view.ProcessedEventCount,
+                calendar = view.Calendar, accepted_events = view.AcceptedEventCount, processed_events = view.ProcessedEventCount, is_test = subject.IsTest,
                 delay = view.Delay is null ? null : new { state = view.Delay.State, step = view.Delay.Step, started_at = view.Delay.StartedAt, deadline_at = view.Delay.DeadlineAt },
             }));
-            var n = 0;
+            n = 0;
             foreach (var s in view.Steps)
                 evidence.Add(Item($"S{++n}", "step", new
                 {
@@ -158,18 +278,20 @@ public sealed class PostgresAiStore(NpgsqlDataSource source, ITrackingStore trac
                     report_lag_seconds = (long)(e.ReceivedAt - e.OccurredAt).TotalSeconds, error = Clip(e.Error, 300),
                 }));
         }
+        if (subject.Kind != "alarm" || alarms.Count == 0) return evidence;
 
+        var alarm = alarms[0];
         var i = 0;
         foreach (var d in await Rows(c, null, """
             SELECT ch.kind channel_kind,e.kind event,d.state,d.attempts,d.last_error,d.sent_at
             FROM notification_deliveries d JOIN alarm_events e ON e.id=d.event_id JOIN notification_channels ch ON ch.id=d.channel_id
             WHERE e.alarm_id=@id ORDER BY d.created_at LIMIT 20
-            """, ct, ("id", alarmId)))
+            """, ct, ("id", subject.Id)))
             evidence.Add(Item($"D{++i}", "delivery", new { channel_kind = d["channel_kind"], @event = d["event"], state = d["state"],
                 attempts = d["attempts"], last_error = Clip(d["last_error"], 300), sent_at = d["sent_at"] }));
 
         i = 0;
-        foreach (var note in await Rows(c, null, "SELECT body,created_at FROM alarm_notes WHERE alarm_id=@id ORDER BY created_at DESC LIMIT 5", ct, ("id", alarmId)))
+        foreach (var note in await Rows(c, null, "SELECT body,created_at FROM alarm_notes WHERE alarm_id=@id ORDER BY created_at DESC LIMIT 5", ct, ("id", subject.Id)))
             evidence.Add(Item($"N{++i}", "note", new { body = Clip(note["body"], 500), created_at = note["created_at"] }));
 
         var similar = await Rows(c, null, """
@@ -177,7 +299,7 @@ public sealed class PostgresAiStore(NpgsqlDataSource source, ITrackingStore trac
             WHERE x.project_id=@p AND t.flow_id=@f AND x.step_code=@s AND x.id<>@id
                 AND x.opened_at BETWEEN CAST(@at AS timestamptz) - interval '6 hours' AND CAST(@at AS timestamptz) + interval '6 hours'
             ORDER BY x.opened_at DESC
-            """, ct, ("p", project), ("f", a["flow_id"]), ("s", a["step_code"]), ("id", alarmId), ("at", a["opened_at"]));
+            """, ct, ("p", subject.ProjectId), ("f", alarm["flow_id"]), ("s", alarm["step_code"]), ("id", subject.Id), ("at", alarm["opened_at"]));
         evidence.Add(Item("B1", "similar_alarms", new
         {
             window_hours = 6, count = similar.Count,

@@ -37,6 +37,7 @@ builder.Services.AddSingleton<IPanelQueries, PostgresPanelQueries>();
 builder.Services.AddSingleton<IFlowQueries, PostgresFlowQueries>();
 builder.Services.AddSingleton<HealthMetricsCollector>();
 builder.Services.AddSingleton<DataExporter>();
+builder.Services.AddSingleton<DemoData>();
 builder.Services.AddHostedService<ExportRunner>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<HealthMetricsCollector>());
 builder.Services.AddIntegraOpsTelemetry(builder.Configuration, "api",
@@ -89,6 +90,13 @@ app.Use(async (context, next) =>
 app.UseRateLimiter();
 
 app.MapGet("/health/live", () => Results.Ok(new { status = "alive" }));
+// Public integration contract; the panel's developer page and Postman/Swagger import it.
+app.MapGet("/openapi.yaml", () =>
+{
+    var stream = typeof(Program).Assembly.GetManifestResourceStream("IntegraOps.Api.openapi.yaml")
+        ?? throw new InvalidOperationException("openapi.yaml gömülü kaynağı bulunamadı.");
+    return Results.Stream(stream, "application/yaml; charset=utf-8");
+});
 app.MapGet("/health/version", () => Results.Ok(new { version = IntegraOpsMetrics.Version, revision = IntegraOpsMetrics.Revision }));
 app.MapGet("/health/ready", async (NpgsqlDataSource dataSource, CancellationToken ct) =>
 {

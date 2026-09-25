@@ -29,7 +29,7 @@ export async function draftAction(_state: DraftState, data: FormData): Promise<D
       let parsed: unknown;
       try { parsed = JSON.parse(typeof payload === "string" && payload.length <= 65536 ? payload : "null"); }
       catch { return { message: "Form verisi okunamadı." }; }
-      const draft = parsed as { name: string; note: string; calendarId: string; steps: { code: string; name: string; maxDelaySeconds: number | null; overrides: Record<string, number> }[] };
+      const draft = parsed as { name: string; note: string; calendarId: string; steps: { code: string; name: string; maxDelaySeconds: number | null; overrides: Record<string, number>; instructions?: string; link?: string }[] };
       await api(`/flows/${flow}/versions/${version}`, "PUT", {
         name: draft.name, note: draft.note, calendarId: draft.calendarId || null, steps: draft.steps,
       });

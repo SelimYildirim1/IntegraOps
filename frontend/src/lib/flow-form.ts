@@ -1,7 +1,7 @@
 export type CreateFlowInput = {
   code: string;
   name: string;
-  steps: { code: string; name: string; maxDelaySeconds: number | null }[];
+  steps: { code: string; name: string; maxDelaySeconds: number | null; instructions?: string; link?: string }[];
 };
 
 export type FlowFormState = {
@@ -58,7 +58,12 @@ export function validateFlow(value: unknown):
         errors[`step-${index}-delay`] = "Süreyi tam sayı olarak girin. İzin verilen aralık: 1 saniye–30 gün.";
       } else maxDelaySeconds = seconds;
     }
-    return { code, name, maxDelaySeconds };
+    const instructions = text(step.instructions);
+    if (instructions.length > 2000) errors[`step-${index}-instructions`] = "Talimat en fazla 2000 karakter olabilir.";
+    const link = text(step.link);
+    if (link && (link.length > 1024 || !/^https?:\/\/[^\s{}]+(\{(transactionId|flow|step)\}[^\s{}]*)*$/.test(link)))
+      errors[`step-${index}-link`] = "https:// ile başlayan tam adres yazın; yalnızca {transactionId}, {flow} ve {step} yer tutucuları kullanılabilir.";
+    return { code, name, maxDelaySeconds, instructions, link };
   });
   return Object.keys(errors).length ? { ok: false, errors } : { ok: true, data: { code, name, steps } };
 }

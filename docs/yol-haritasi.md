@@ -402,6 +402,22 @@ Yeterli geçmiş veri oluşursa Python üzerinden anomali tespiti, olası neden 
 
 ---
 
+## 16. Dalga 1 — Değer görünürlüğü ✅ (yerelde doğrulandı)
+
+Kaynak: `docs/urun-eksikleri-ve-pazarlama.md` bölüm 7. Ayrıntı: `docs/dalga-1.md`. Migration `015_wave1.sql`.
+
+| İş | Durum |
+|---|---|
+| Slack ve Microsoft Teams bildirim kanalları (Block Kit, Adaptive Card) | ✅ |
+| Adım başına çalışma talimatı ve kaynak sistem bağlantı şablonu; alarm iletisi, alarm ve işlem sayfalarında gösterim | ✅ |
+| 6 sektör akış şablonu ve şablondan akış oluşturma | ✅ |
+| Tek tıkla örnek veri üretme ve silme (`DEMO-` işlemler) | ✅ |
+| OpenAPI 3.1 belgesi (`/openapi.yaml`) ve panelde Geliştirici sayfası | ✅ |
+| Gerçek model adaptörü ve anlatımlı özet | 🔄 Gemini ile ayrı çalışmada (Aşama 15) |
+| Tanıtım sitesi ve güven sayfası | ⏳ Ürün dışı; marka adı netleşince |
+
+**Doğrulama:** `WaveOneTests` 10 test, `scripts/verify_wave1.py`.
+
 ## Teknolojilerin görev dağılımı
 
 | Teknoloji | Projedeki görevi | Devreye giriş |
@@ -439,3 +455,4 @@ Yeterli geçmiş veri oluşursa Python üzerinden anomali tespiti, olası neden 
 | 22 Eylül 2026 | Aşama 11 | Paralel/koşullu/isteğe bağlı adımlar, atlama ve iptal (migration 009), 24 kontrol geçti. **Aşama 11 tamamlandı** |
 | 22 Eylül 2026 | Aşama 12 | Bağlantılar, eşleme şablonları, anahtar yenileme, Python/Node SDK (migration 010), 32 kontrol geçti. **Aşama 12 tamamlandı** |
 | 23 Eylül 2026 | Aşama 15 | Yapay zekâ altyapısı: model bağımsız katman, kanıta dayalı alarm inceleme, geri bildirim, plan eklentisi (migration 013–014), 25 kontrol geçti. Model seçimi bekleniyor |
+| 24 Eylül 2026 | Dalga 1 | Slack/Teams kanalları, adım talimatı ve kaynak bağlantısı, sektör şablonları, örnek veri, OpenAPI ve Geliştirici sayfası. Migration 015 |

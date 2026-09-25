@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
 import { api, apiMessage } from "@/lib/api";
 import type { ActionState } from "@/lib/pilot-types";
 
@@ -37,6 +38,27 @@ export async function adminAction(_previous: ActionState, data: FormData): Promi
       }
       case "connection-delete": await api(`/connections/${id}`, "DELETE"); message = "Bağlantı silindi."; break;
       case "key-revoke": await api(`/keys/${id}`, "DELETE"); break;
+      case "template-create": {
+        const flowCode = field("code").trim();
+        if (flowCode && !/^[a-z][a-z0-9-]{0,63}$/.test(flowCode)) return { message: "Akış kodu küçük harfle başlamalı; harf, rakam ve tire kullanın." };
+        const created = await api<{ code: string }>("/flows/from-template", "POST", { template: field("template"), code: flowCode || null, name: field("name").trim() || null });
+        revalidatePath("/flows"); revalidatePath("/");
+        redirect(`/flows/view/${encodeURIComponent(created.code)}?template=1`);
+      }
+      case "demo-generate": {
+        const flowCode = field("flow");
+        if (!/^[a-z][a-z0-9-]{0,63}$/.test(flowCode)) return { message: "Akış kodu geçersiz." };
+        const r = await api<{ transactions: number; events: number }>(`/flows/${flowCode}/demo`, "POST", { count: Number(field("count") || 30), days: Number(field("days") || 14) });
+        revalidatePath("/"); revalidatePath("/alarms"); revalidatePath("/reports"); revalidatePath(`/flows/view/${flowCode}`);
+        message = `${r.transactions} örnek işlem ve ${r.events} bildirim üretildi. Worker işledikçe listeye düşer; süresi geçen adımlar için alarmlar birkaç dakika içinde açılır.`; break;
+      }
+      case "demo-delete": {
+        const flowCode = field("flow");
+        if (!/^[a-z][a-z0-9-]{0,63}$/.test(flowCode)) return { message: "Akış kodu geçersiz." };
+        const r = await api<{ transactions: number }>(`/flows/${flowCode}/demo`, "DELETE");
+        revalidatePath("/"); revalidatePath("/alarms"); revalidatePath("/reports"); revalidatePath(`/flows/view/${flowCode}`);
+        message = r.transactions ? `${r.transactions} örnek işlem ve bağlı kayıtları silindi.` : "Silinecek örnek veri yoktu."; break;
+      }
       case "channel-create": result = await api("/channels", "POST", { name: field("name"), kind: field("kind"), target: field("target"), secret: field("secret") || null }); break;
       case "channel-toggle": await api(`/channels/${id}`, "PUT", { enabled: field("enabled") === "true" }); break;
       case "ack": await api(`/alarms/${id}/acknowledge`, "POST"); break;
@@ -44,6 +66,11 @@ export async function adminAction(_previous: ActionState, data: FormData): Promi
       case "assign": await api(`/alarms/${id}/assign`, "POST", { userId: field("userId") }); message = field("userId") ? "Sorumlu güncellendi." : "Sorumlu kaldırıldı."; break;
       case "note": await api(`/alarms/${id}/notes`, "POST", { body: field("body") }); message = "Not eklendi."; break;
       case "ai-analyze": await api(`/alarms/${id}/ai-analyses`, "POST"); message = "İnceleme hazırlandı."; break;
+      case "ai-analyze-transaction": {
+        const flow = field("flow"), transactionId = field("transactionId");
+        if (!/^[a-z][a-z0-9-]{0,63}$/.test(flow) || !/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(transactionId)) return { message: "İşlem kimliği geçersiz." };
+        await api(`/flows/${encodeURIComponent(flow)}/transactions/${encodeURIComponent(transactionId)}/ai-analyses`, "POST"); message = "İnceleme hazırlandı."; break;
+      }
       case "ai-feedback": await api(`/ai/analyses/${id}/feedback`, "PUT", { rating: field("rating"), comment: field("comment") || null }); message = "Geri bildiriminiz kaydedildi."; break;
       case "view-save": await api("/views", "POST", { kind: field("kind"), name: field("name"), query: field("query") }); message = "Görünüm kaydedildi."; break;
       case "view-delete": await api(`/views/${id}`, "DELETE"); message = "Görünüm silindi."; break;

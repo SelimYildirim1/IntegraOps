@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import Icon from "@/components/icons";
 
 // Sayfayı elle ya da 10 saniyede bir yeniler. Sekme görünür değilken otomatik yenileme atlanır.
 export default function RefreshControls() {
@@ -19,10 +20,10 @@ export default function RefreshControls() {
   }, [automatic, pending, router]);
 
   return <div className="refresh-controls">
-    <label className="toggle"><input type="checkbox" checked={automatic}
-      onChange={event => setAutomatic(event.target.checked)} /> 10 saniyede bir yenile</label>
-    <button className="button secondary" type="button" onClick={refresh} disabled={pending}>
-      {pending ? "Yenileniyor…" : "Yenile"}
+    <label className="toggle" title="Sekme açıkken 10 saniyede bir yeniler"><input type="checkbox" checked={automatic}
+      onChange={event => setAutomatic(event.target.checked)} /> Otomatik</label>
+    <button className={`button secondary${pending ? " spinning" : ""}`} type="button" onClick={refresh} disabled={pending} aria-label="Yenile">
+      <Icon name="refresh" /><span>{pending ? "Yenileniyor" : "Yenile"}</span>
     </button>
   </div>;
 }

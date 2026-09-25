@@ -14,9 +14,11 @@ public static class StepKind
 // A published flow version is immutable; a transaction keeps the version it started with.
 // Steps in the same stage run in parallel; the next stage waits for all applicable required steps of the previous one.
 // Overrides give a different allowance to transactions of a named group (for example "vip").
+// Instructions are the operator's runbook for the step; LinkTemplate opens the record in the source system
+// ({transactionId}, {flow} and {step} are substituted).
 public sealed record FlowStep(string Code, string Name, int Position, int? MaxDelaySeconds,
     IReadOnlyDictionary<string, int>? Overrides = null, int? Stage = null, string Kind = StepKind.Required,
-    IReadOnlyList<string>? Groups = null)
+    IReadOnlyList<string>? Groups = null, string Instructions = "", string LinkTemplate = "")
 {
     public int EffectiveStage => Stage ?? Position;
     public int? AllowanceFor(string? group) =>
@@ -48,7 +50,7 @@ public sealed record ObservedEvent(
 public sealed record TimelineStep(
     string Code, string Name, int Position, int? MaxDelaySeconds,
     string Observation, DateTimeOffset? OccurredAt, string? Error,
-    int? Stage = null, string Kind = StepKind.Required)
+    int? Stage = null, string Kind = StepKind.Required, string Instructions = "", string? Link = null)
 {
     /// <summary>Linear flows built without stage numbers use the position as the stage.</summary>
     public int EffectiveStage => Stage ?? Position;
@@ -89,7 +91,8 @@ public sealed record Projection(TransactionStatus Status, IReadOnlyList<Timeline
 public static class TimelineProjector
 {
     /// <param name="group">Transaction group; steps show the allowance that applies to it and conditional steps resolve against it.</param>
-    public static Projection Project(FlowDefinition flow, IReadOnlyList<ObservedEvent> events, string? group = null)
+    /// <param name="transactionId">When given, each step's source link is rendered for this transaction.</param>
+    public static Projection Project(FlowDefinition flow, IReadOnlyList<ObservedEvent> events, string? group = null, string? transactionId = null)
     {
         // Delivery order is not business order. EventId breaks exact timestamp ties deterministically.
         var latestByStep = events
@@ -112,7 +115,8 @@ public static class TimelineProjector
                     _ => "cancelled",
                 };
             return new TimelineStep(step.Code, step.Name, step.Position, step.AllowanceFor(group),
-                observation, observed?.OccurredAt, observed?.Error, step.EffectiveStage, step.Kind);
+                observation, observed?.OccurredAt, observed?.Error, step.EffectiveStage, step.Kind, step.Instructions,
+                transactionId is null ? null : StepLinks.Render(step.LinkTemplate, flow.Code, transactionId, step.Code));
         }).ToArray();
 
         var status = events.Count == 0 ? TransactionStatus.Pending
@@ -122,5 +126,31 @@ public static class TimelineProjector
             : TransactionStatus.InProgress;
 
         return new Projection(status, steps, group);
+    }
+}
+
+/// <summary>Source-system link templates: {transactionId}, {flow} and {step} placeholders in an absolute http(s) URL.</summary>
+public static class StepLinks
+{
+    private static readonly string[] Placeholders = ["{transactionId}", "{flow}", "{step}"];
+
+    public static string? Render(string template, string flow, string transactionId, string step)
+    {
+        if (string.IsNullOrWhiteSpace(template)) return null;
+        return template.Replace("{transactionId}", Uri.EscapeDataString(transactionId), StringComparison.Ordinal)
+            .Replace("{flow}", flow, StringComparison.Ordinal).Replace("{step}", step, StringComparison.Ordinal);
+    }
+
+    /// <summary>Null when valid; otherwise a user-facing reason.</summary>
+    public static string? Validate(string? template)
+    {
+        if (string.IsNullOrWhiteSpace(template)) return null;
+        if (template.Length > 1024) return "Bağlantı şablonu en fazla 1024 karakter olabilir.";
+        var probe = template;
+        foreach (var placeholder in Placeholders) probe = probe.Replace(placeholder, "x", StringComparison.Ordinal);
+        if (probe.Contains('{') || probe.Contains('}')) return "Bağlantı şablonunda yalnızca {transactionId}, {flow} ve {step} kullanılabilir.";
+        if (!Uri.TryCreate(probe, UriKind.Absolute, out var uri) || uri.Scheme is not ("https" or "http") || !string.IsNullOrEmpty(uri.UserInfo))
+            return "Bağlantı şablonu https:// ile başlayan tam bir adres olmalı; örnek: https://erp.sirket.com/orders/{transactionId}";
+        return null;
     }
 }

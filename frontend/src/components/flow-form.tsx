@@ -7,9 +7,9 @@ import { initialFlowState } from "@/lib/flow-form";
 import { delayDraft, type FlowDetails } from "@/lib/flow-details";
 
 type StepDraft = {
-  id: number; code: string; name: string; delayValue: string; delayUnit: string;
+  id: number; code: string; name: string; delayValue: string; delayUnit: string; instructions: string; link: string;
 };
-const blankStep = (id: number): StepDraft => ({ id, code: "", name: "", delayValue: "", delayUnit: "minutes" });
+const blankStep = (id: number): StepDraft => ({ id, code: "", name: "", delayValue: "", delayUnit: "minutes", instructions: "", link: "" });
 
 function Field({ id, label, error, hint, children }: {
   id: string; label: string; error?: string; hint?: string; children: ReactNode;
@@ -25,7 +25,7 @@ export default function FlowForm({ initialFlow }: { initialFlow?: FlowDetails })
   const [name, setName] = useState(initialFlow?.name ?? "");
   const [steps, setSteps] = useState<StepDraft[]>(() => initialFlow
     ? [...initialFlow.steps].sort((a, b) => a.position - b.position).map((step, index) => ({
-      id: index, code: step.code, name: step.name, ...delayDraft(step.maxDelaySeconds),
+      id: index, code: step.code, name: step.name, ...delayDraft(step.maxDelaySeconds), instructions: step.instructions ?? "", link: step.link ?? "",
     })) : [blankStep(0), blankStep(1)]);
   const [edited, setEdited] = useState(false);
   const nextId = useRef(initialFlow?.steps.length ?? 2);
@@ -102,6 +102,18 @@ export default function FlowForm({ initialFlow }: { initialFlow?: FlowDetails })
                   </select>
                 </Field>
               </div>}
+            <details className="details runbook-fields" open={Boolean(step.instructions || step.link)}><summary>Çalışma talimatı ve kaynak sistem bağlantısı (isteğe bağlı)</summary>
+              <div className="form-grid">
+                <Field id={`${prefix}-instructions`} label="Bu adım geciktiğinde ya da hata verdiğinde ne yapılmalı?" error={errors[`${prefix}-instructions`]} hint="Alarm iletisinde ve alarm sayfasında gösterilir.">
+                  <textarea id={`${prefix}-instructions`} rows={3} maxLength={2000} value={step.instructions} {...accessibility(`${prefix}-instructions`)}
+                    onChange={event => updateStep(step.id, { instructions: event.target.value })} />
+                </Field>
+                <Field id={`${prefix}-link`} label="Kaynak sistemde aç (bağlantı şablonu)" error={errors[`${prefix}-link`]} hint="{transactionId} işlem numarasıyla doldurulur.">
+                  <input id={`${prefix}-link`} value={step.link} maxLength={1024} placeholder="https://erp.sirket.com/orders/{transactionId}" autoCapitalize="none" spellCheck={false}
+                    {...accessibility(`${prefix}-link`)} onChange={event => updateStep(step.id, { link: event.target.value })} />
+                </Field>
+              </div>
+            </details>
           </li>;
         })}</ol>
 

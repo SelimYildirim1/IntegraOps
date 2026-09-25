@@ -29,12 +29,13 @@ public static class FlowVersions
 
     public static async Task<IReadOnlyList<FlowStep>> LoadStepsAsync(NpgsqlConnection c, NpgsqlTransaction? tx, Guid versionId, CancellationToken ct)
     {
-        var stepRows = await Rows(c, tx, "SELECT code,name,position,max_delay_seconds,stage,kind,applies_to FROM flow_version_steps WHERE version_id=@v ORDER BY position", ct, ("v", versionId));
+        var stepRows = await Rows(c, tx, "SELECT code,name,position,max_delay_seconds,stage,kind,applies_to,instructions,link_template FROM flow_version_steps WHERE version_id=@v ORDER BY position", ct, ("v", versionId));
         var overrideRows = await Rows(c, tx, "SELECT step_code,group_code,max_delay_seconds FROM flow_step_overrides WHERE version_id=@v", ct, ("v", versionId));
         var overrides = overrideRows.GroupBy(o => (string)o["step_code"]!)
             .ToDictionary(g => g.Key, g => (IReadOnlyDictionary<string, int>)g.ToDictionary(o => (string)o["group_code"]!, o => (int)o["max_delay_seconds"]!));
         return stepRows.Select(s => new FlowStep((string)s["code"]!, (string)s["name"]!, (short)s["position"]!, s["max_delay_seconds"] as int?,
-            overrides.GetValueOrDefault((string)s["code"]!), (short)s["stage"]!, (string)s["kind"]!, (string[])s["applies_to"]!)).ToArray();
+            overrides.GetValueOrDefault((string)s["code"]!), (short)s["stage"]!, (string)s["kind"]!, (string[])s["applies_to"]!,
+            (string)s["instructions"]!, (string)s["link_template"]!)).ToArray();
     }
 
     public static async Task<BusinessCalendar?> LoadCalendarAsync(NpgsqlConnection c, NpgsqlTransaction? tx, Guid id, CancellationToken ct)
@@ -54,10 +55,11 @@ public static class FlowVersions
         foreach (var step in steps)
         {
             await Run(c, tx, """
-                INSERT INTO flow_version_steps (version_id, code, name, position, max_delay_seconds, stage, kind, applies_to)
-                VALUES (@v, @code, @name, @position, CAST(@delay AS integer), @stage, @kind, @groups)
+                INSERT INTO flow_version_steps (version_id, code, name, position, max_delay_seconds, stage, kind, applies_to, instructions, link_template)
+                VALUES (@v, @code, @name, @position, CAST(@delay AS integer), @stage, @kind, @groups, @instructions, @link)
                 """, ct, ("v", versionId), ("code", step.Code), ("name", step.Name), ("position", (short)step.Position), ("delay", step.MaxDelaySeconds),
-                ("stage", (short)step.EffectiveStage), ("kind", step.Kind), ("groups", (step.Groups ?? []).ToArray()));
+                ("stage", (short)step.EffectiveStage), ("kind", step.Kind), ("groups", (step.Groups ?? []).ToArray()),
+                ("instructions", step.Instructions), ("link", step.LinkTemplate));
             foreach (var (group, seconds) in step.Overrides ?? new Dictionary<string, int>())
                 await Run(c, tx, "INSERT INTO flow_step_overrides (version_id, step_code, group_code, max_delay_seconds) VALUES (@v, @s, @g, @d)", ct,
                     ("v", versionId), ("s", step.Code), ("g", group), ("d", seconds));

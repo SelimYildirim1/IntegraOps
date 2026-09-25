@@ -1,6 +1,7 @@
 import Link from "next/link";
 import type { Filters } from "@/lib/types";
 import { deadline } from "@/lib/time";
+import Icon, { type IconName } from "@/components/icons";
 
 export const statusLabels: Record<string, string> = {
   pending: "İşlenmeyi bekliyor", inProgress: "Devam ediyor",
@@ -61,23 +62,47 @@ export function filterQuery(filters: Filters) {
 // Dates come from <input type="date">; the panel sends them as plain days (UTC midnight on the API side).
 export const dateInput = /^\d{4}-\d{2}-\d{2}$/;
 
-export function Message({ title, description, href = "/", action = "İşlem listesine dön" }: {
-  title: string; description: string; href?: string; action?: string;
+export function Message({ title, description, href = "/", action = "İşlem listesine dön", icon = "info" }: {
+  title: string; description: string; href?: string; action?: string; icon?: IconName;
 }) {
   return <section className="surface message" role="status">
+    <span className="message-icon"><Icon name={icon} size={22} /></span>
     <h1>{title}</h1><p>{description}</p>
     <Link className="button secondary" href={href} prefetch={false}>{action}</Link>
   </section>;
 }
 
-export function PageHead({ title, lede, crumb, children }: {
-  title: React.ReactNode; lede?: React.ReactNode; crumb?: { href: string; label: string }; children?: React.ReactNode;
+export function PageHead({ title, lede, crumb, icon, children }: {
+  title: React.ReactNode; lede?: React.ReactNode; crumb?: { href: string; label: string }; icon?: IconName; children?: React.ReactNode;
 }) {
   return <>
-    {crumb && <Link className="crumb" href={crumb.href} prefetch={false}>{crumb.label}</Link>}
+    {crumb && <Link className="crumb" href={crumb.href} prefetch={false}><Icon name="back" size={14} />{crumb.label}</Link>}
     <div className="page-head">
-      <div><h1>{title}</h1>{lede && <p className="lede">{lede}</p>}</div>
+      <div className="page-title">
+        {icon && <span className="page-icon"><Icon name={icon} size={20} /></span>}
+        <div><h1>{title}</h1>{lede && <p className="lede">{lede}</p>}</div>
+      </div>
       {children && <div className="head-actions">{children}</div>}
     </div>
   </>;
+}
+
+// Açıklama metnini varsayılan olarak katlar; ekran veriyi ve düğmeleri gösterir, anlatım istenince açılır.
+export function Explain({ title = "Nasıl çalışır?", children }: { title?: string; children: React.ReactNode }) {
+  return <details className="explain">
+    <summary><Icon name="info" size={15} />{title}</summary>
+    <div className="explain-body">{children}</div>
+  </details>;
+}
+
+// Boş liste durumu: ikon, başlık, tek satır yönlendirme ve gerekiyorsa bir eylem.
+export function Empty({ icon = "inbox", title, children, action }: {
+  icon?: IconName; title: string; children?: React.ReactNode; action?: React.ReactNode;
+}) {
+  return <div className="empty">
+    <span className="empty-icon"><Icon name={icon} size={22} /></span>
+    <h3>{title}</h3>
+    {children && <p>{children}</p>}
+    {action}
+  </div>;
 }

@@ -52,10 +52,16 @@ public static class PostgresAlarmStore
         if (kind is not ("opened" or "resolved")) return; // Only lifecycle changes notify channels.
         var data = (await Rows(c, tx, """
             SELECT a.id alarm_id,a.project_id,f.code flow,t.business_id transaction_id,a.kind alarm_kind,
-                a.step_code,a.error,a.deadline_at,a.opened_at,a.resolved_at,a.resolution
-            FROM alarms a JOIN transactions t ON t.id=a.transaction_id JOIN flows f ON f.id=t.flow_id WHERE a.id=@a
+                a.step_code,a.error,a.deadline_at,a.opened_at,a.resolved_at,a.resolution,
+                s.name step_name,s.instructions,s.link_template
+            FROM alarms a JOIN transactions t ON t.id=a.transaction_id JOIN flows f ON f.id=t.flow_id
+            LEFT JOIN flow_version_steps s ON s.version_id=t.flow_version_id AND s.code=a.step_code WHERE a.id=@a
             """, ct, ("a", alarm)))[0];
         data["event_id"] = eventId; data["event"] = kind; data["schema_version"] = 1;
+        // Runbook fields travel with the notification so Slack, Teams and e-mail can show the operator what to do.
+        data["instructions"] = data["instructions"] as string ?? "";
+        data["link"] = StepLinks.Render(data["link_template"] as string ?? "", (string)data["flow"]!, (string)data["transaction_id"]!, (string)data["step_code"]!);
+        data.Remove("link_template");
         var body = JsonSerializer.Serialize(data);
         var channels = await Rows(c, tx, "SELECT id FROM notification_channels WHERE project_id=@p AND enabled", ct, ("p", data["project_id"]));
         foreach (var channel in channels)

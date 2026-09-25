@@ -1,18 +1,19 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { cookies } from "next/headers";
-import { IBM_Plex_Sans, IBM_Plex_Mono } from "next/font/google";
+import { Manrope, JetBrains_Mono } from "next/font/google";
 import PanelToolbar from "@/components/panel-toolbar";
+import Icon from "@/components/icons";
 import { logoutAction } from "@/app/account-actions";
 import { api, getProjects } from "@/lib/api";
 import type { AlarmPage } from "@/lib/pilot-types";
 import "./globals.css";
 
-const sans = IBM_Plex_Sans({
-  subsets: ["latin", "latin-ext"], weight: ["400", "500", "600"], variable: "--font-plex-sans", display: "swap",
+const sans = Manrope({
+  subsets: ["latin", "latin-ext"], weight: ["400", "500", "600", "700"], variable: "--font-sans-src", display: "swap",
 });
-const mono = IBM_Plex_Mono({
-  subsets: ["latin", "latin-ext"], weight: ["400", "500"], variable: "--font-plex-mono", display: "swap",
+const mono = JetBrains_Mono({
+  subsets: ["latin", "latin-ext"], weight: ["400", "500"], variable: "--font-mono-src", display: "swap",
 });
 
 export const metadata: Metadata = { title: "IntegraOps", robots: { index: false, follow: false } };
@@ -34,23 +35,33 @@ export default async function RootLayout({ children }: { children: React.ReactNo
       }
     } catch { /* Süresi dolan oturumu sayfa kendisi ele alır; giriş ekranı erişilebilir kalır. */ }
   }
+  const brand = <Link className="brand" href="/" prefetch={false}><span className="brand-mark" aria-hidden="true" />IntegraOps</Link>;
   return <html lang="tr" className={`${sans.variable} ${mono.variable}`}><body>
     <a className="skip-link" href="#content">İçeriğe geç</a>
-    <header className="appbar">
-      <div className="appbar-row">
-        <Link className="brand" href="/" prefetch={false}><span className="brand-mark">io</span>IntegraOps</Link>
-        {loggedIn && <PanelToolbar openAlarms={openAlarms} />}
-        {loggedIn && <div className="appbar-right">
-          <Link className="project-chip" href="/projects" prefetch={false} title="Projeyi değiştir">
-            <span>{projectName || "Proje seçin"}</span>
+    {loggedIn ? <div className="frame">
+      <aside className="sidebar">
+        <div className="sidebar-top">
+          {brand}
+          <Link className="project-switch" href="/projects" prefetch={false} title="Projeyi değiştir">
+            <Icon name="layers" size={16} />
+            <span className="project-name">{projectName || "Proje seçin"}</span>
+            <Icon name="down" size={14} className="project-caret" />
           </Link>
-          <Link className="plain" href="/organization" prefetch={false}>Organizasyon</Link>
-          <Link className="plain" href="/account" prefetch={false}>Hesabım</Link>
-          <form action={logoutAction}><button className="text-button" type="submit">Çıkış</button></form>
-        </div>}
+        </div>
+        <PanelToolbar openAlarms={openAlarms} />
+        <div className="sidebar-foot">
+          <Link href="/organization" prefetch={false}><Icon name="building" size={18} /><span>Organizasyon</span></Link>
+          <Link href="/account" prefetch={false}><Icon name="user" size={18} /><span>Hesabım</span></Link>
+          <form action={logoutAction}><button type="submit"><Icon name="logout" size={18} /><span>Çıkış</span></button></form>
+        </div>
+      </aside>
+      <div className="frame-main">
+        <main id="content" className="shell">{children}</main>
+        <footer className="footer"><span>IntegraOps</span><span>Saatler Türkiye saatiyle gösterilir.</span></footer>
       </div>
-    </header>
-    <main id="content" className="shell">{children}</main>
-    <footer className="footer"><span>IntegraOps, olay bazlı işlem takibi</span><span>Saatler Türkiye saatiyle gösterilir.</span></footer>
+    </div> : <div className="auth-frame">
+      <header className="auth-top">{brand}</header>
+      <main id="content" className="shell">{children}</main>
+    </div>}
   </body></html>;
 }

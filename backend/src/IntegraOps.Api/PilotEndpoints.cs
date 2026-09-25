@@ -215,6 +215,15 @@ public static class PilotEndpoints
         projectApi.MapPut("/flows/{flow}", async (HttpContext c, string flow, FlowNameInput input, PostgresFlowVersionStore s, CancellationToken ct) =>
         { await s.Rename(Actor(c), Code(flow), input, ct); return Results.NoContent(); }).WithMetadata(new ProjectRule("owner,operator"));
 
+        // Dalga 1: sector templates and sample data so a new project shows a living board before any source is connected.
+        projectApi.MapGet("/flows/catalog", () => Results.Ok(FlowTemplates.Catalog())).WithMetadata(new ProjectRule());
+        projectApi.MapPost("/flows/from-template", async (HttpContext c, TemplateInput input, PostgresFlowVersionStore s, CancellationToken ct)
+            => Results.Json(await s.CreateFromTemplate(Actor(c), input, ct), statusCode: 201)).WithMetadata(new ProjectRule("owner,operator"));
+        projectApi.MapPost("/flows/{flow}/demo", async (HttpContext c, string flow, DemoInput input, DemoData d, CancellationToken ct)
+            => Results.Json(await d.Generate(Actor(c), Code(flow), input.Count ?? 30, input.Days ?? 14, ct), statusCode: 201)).WithMetadata(new ProjectRule("owner,operator"));
+        projectApi.MapDelete("/flows/{flow}/demo", async (HttpContext c, string flow, DemoData d, CancellationToken ct)
+            => Results.Ok(await d.Delete(Actor(c), Code(flow), ct))).WithMetadata(new ProjectRule("owner,operator"));
+
         projectApi.MapGet("/calendars", async (HttpContext c, PostgresFlowVersionStore s, CancellationToken ct)
             => Results.Ok(await s.Calendars(Actor(c).ProjectId, ct))).WithMetadata(new ProjectRule());
         projectApi.MapPost("/calendars", async (HttpContext c, CalendarInput input, PostgresFlowVersionStore s, CancellationToken ct)

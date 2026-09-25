@@ -1,5 +1,6 @@
 export type FlowStepDetails = { code: string; name: string; position: number; maxDelaySeconds: number | null; overrides?: Record<string, number>;
-  stage?: number; kind?: "required" | "optional" | "conditional"; groups?: string[] };
+  stage?: number; kind?: "required" | "optional" | "conditional"; groups?: string[]; instructions?: string; link?: string };
+export type FlowTemplate = { code: string; name: string; sector: string; description: string; promise: string; stepCount: number; stageCount: number; groups: string[]; steps: FlowStepDetails[] };
 export type FlowVersionRow = {
   id: string; version: number; state: "draft" | "published"; effective_from: string | null; published_at: string | null;
   note: string; created_at: string; calendar: string | null; created_by: string | null; step_count: number; transaction_count: number; effective: boolean;
@@ -14,6 +15,7 @@ export type FlowDetails = {
   steps: FlowStepDetails[];
   versions: FlowVersionRow[];
   hasDraft: boolean;
+  demoCount?: number;
 };
 export type FlowVersionDetails = {
   flow: string; name: string; version: number; state: "draft" | "published"; effectiveFrom: string | null; publishedAt: string | null;

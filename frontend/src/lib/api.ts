@@ -1,7 +1,7 @@
 import "server-only";
 import { cookies } from "next/headers";
 import { redirect, unstable_rethrow } from "next/navigation";
-import type { FlowDetails, FlowDiffResult, FlowVersionDetails, TestEventPayload } from "./flow-details";
+import type { FlowDetails, FlowDiffResult, FlowTemplate, FlowVersionDetails, TestEventPayload } from "./flow-details";
 import type { CreateFlowInput } from "./flow-form";
 import type { Filters, Flow, Summary, TransactionDetail, TransactionPage } from "./types";
 import type { Project, Access, Assignee, Calendar, SavedView } from "./pilot-types";
@@ -25,13 +25,17 @@ async function raw<T>(path: string, method: string, body: unknown, headers: Reco
   }
   if (!response.ok) {
     let title = "İstek tamamlanamadı.";
+    let fromApi = false;
     try {
       const problem = await response.json();
-      if (typeof problem.title === "string" && problem.title.length < 500) title = problem.title;
+      if (typeof problem.title === "string" && problem.title.length < 500) { title = problem.title; fromApi = true; }
     } catch { /* Do not display raw proxy/server responses. */ }
+    // 429/502/503 carry a specific, safe explanation from the API (quota wait time, AI provider error, AI disabled reason);
+    // generic texts are used only when no API problem body was parsed, e.g. a proxy error page.
+    const explained = fromApi && (response.status === 429 || response.status === 502 || response.status === 503);
     if (response.status === 401) title = "Oturum doğrulanamadı. Tekrar giriş yapın.";
-    if (response.status === 429) title = "Çok fazla deneme yapıldı. Bir dakika sonra tekrar deneyin.";
-    if (response.status >= 500) title = "Servis şu anda isteği tamamlayamıyor. Bir süre sonra tekrar deneyin.";
+    if (response.status === 429 && !explained) title = "Çok fazla deneme yapıldı. Bir dakika sonra tekrar deneyin.";
+    if (response.status >= 500 && !explained) title = "Servis şu anda isteği tamamlayamıyor. Bir süre sonra tekrar deneyin.";
     throw new ApiError(response.status, title);
   }
   if (response.status === 204) return undefined as T;
@@ -53,8 +57,10 @@ export async function api<T>(path: string, method = "GET", body?: unknown, proje
 }
 
 export type LoginResult = { token?: string; expiresIn?: number; mfaRequired?: boolean; challenge?: string };
-export const login = (email: string, password: string) => raw<LoginResult>("/auth/login", "POST", { email, password }, {});
-export const completeMfa = (challenge: string, code: string) => raw<{ token: string }>("/auth/mfa", "POST", { challenge, code }, {});
+export const login = (email: string, password: string, remember = false) =>
+  raw<LoginResult>("/auth/login", "POST", { email, password, remember }, {});
+export const completeMfa = (challenge: string, code: string, remember = false) =>
+  raw<{ token: string; expiresIn?: number }>("/auth/mfa", "POST", { challenge, code, remember }, {});
 export const signup = (input: { organizationName: string; name: string; email: string; password: string }) =>
   raw<{ token: string; projectId: string }>("/auth/signup", "POST", input, {});
 export const startSso = (email: string, next: string | null) => raw<{ url: string }>("/auth/sso/start" + (next ? "?" + new URLSearchParams({ next }) : ""), "POST", { email }, {});
@@ -66,6 +72,7 @@ export const getFlow = (flow: string) => api<FlowDetails>("/flows/" + encodeURIC
 export const getFlowVersion = (flow: string, version: number) => api<FlowVersionDetails>(`/flows/${encodeURIComponent(flow)}/versions/${version}`);
 export const getFlowDiff = (flow: string, from: number, to: number) => api<FlowDiffResult>(`/flows/${encodeURIComponent(flow)}/versions/${from}/diff/${to}`);
 export const getCalendars = () => api<Calendar[]>("/calendars");
+export const getFlowCatalog = () => api<FlowTemplate[]>("/flows/catalog");
 export const getSummary = (flow: string, test: string) => api<Summary>(
   "/transactions/summary?" + new URLSearchParams({ flow, test }));
 export const getTransactions = (filters: Filters) => api<TransactionPage>(

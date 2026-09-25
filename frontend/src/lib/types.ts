@@ -28,6 +28,7 @@ export type TimelineStep = {
   code: string; name: string; position: number; maxDelaySeconds: number | null;
   observation: "not_observed" | "completed" | "failed" | "skipped" | "cancelled" | "not_applicable";
   occurredAt: string | null; error: string | null; stage: number; kind: StepKind;
+  instructions?: string; link?: string | null;
 };
 export type ObservedEvent = {
   eventId: string; step: string; status: "completed" | "failed" | "skipped" | "cancelled";

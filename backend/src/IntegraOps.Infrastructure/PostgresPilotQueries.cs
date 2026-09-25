@@ -77,10 +77,17 @@ public sealed class PostgresPilotQueries(NpgsqlDataSource source, IDataProtectio
     {
         await using var c = await source.OpenConnectionAsync(ct);
         var alarms = await Rows(c, null, """
-            SELECT a.*,f.code flow,t.business_id,t.is_test,asg.name assigned_name FROM alarms a JOIN transactions t ON t.id=a.transaction_id
-            JOIN flows f ON f.id=t.flow_id LEFT JOIN app_users asg ON asg.id=a.assigned_to WHERE a.project_id=@p AND a.id=@id
+            SELECT a.*,f.code flow,t.business_id,t.is_test,asg.name assigned_name,s.name step_name,s.instructions,s.link_template
+            FROM alarms a JOIN transactions t ON t.id=a.transaction_id
+            JOIN flows f ON f.id=t.flow_id LEFT JOIN app_users asg ON asg.id=a.assigned_to
+            LEFT JOIN flow_version_steps s ON s.version_id=t.flow_version_id AND s.code=a.step_code
+            WHERE a.project_id=@p AND a.id=@id
             """, ct, ("p", project), ("id", id));
         if (alarms.Count == 0) throw new PilotHttpException(404, "Alarm bu projede bulunamadı.");
+        var alarm = alarms[0];
+        alarm["instructions"] = alarm["instructions"] as string ?? "";
+        alarm["link"] = IntegraOps.Domain.StepLinks.Render(alarm["link_template"] as string ?? "", (string)alarm["flow"]!, (string)alarm["business_id"]!, (string)alarm["step_code"]!);
+        alarm.Remove("link_template");
         var notes = await Rows(c, null, """
             SELECT n.id,n.body,n.created_at,u.name author FROM alarm_notes n JOIN app_users u ON u.id=n.author_id
             WHERE n.alarm_id=@id ORDER BY n.created_at,n.id
@@ -170,7 +177,8 @@ public sealed class PostgresPilotQueries(NpgsqlDataSource source, IDataProtectio
         {
             var target = protector.Unprotect((string)row["target_protected"]!);
             row.Remove("target_protected");
-            row["target"] = row["kind"] is "webhook" ? new Uri(target).GetLeftPart(UriPartial.Authority) : target;
+            // Chat webhook URLs carry their secret in the path; only the host is shown.
+            row["target"] = row["kind"] is "webhook" or "slack" or "teams" ? new Uri(target).GetLeftPart(UriPartial.Authority) : target;
         }
         return rows;
     }
@@ -186,7 +194,8 @@ public sealed class PostgresPilotQueries(NpgsqlDataSource source, IDataProtectio
             secret = string.IsNullOrEmpty(input.Secret) ? Token() : input.Secret;
             if (secret.Length is < 32 or > 128) throw new PilotHttpException(400, "Webhook sırrı 32–128 karakter olmalı.");
         }
-        else throw new PilotHttpException(400, "Kanal türü email veya webhook olmalı.");
+        else if (input.Kind is "slack" or "teams") transport.ValidateTarget(target, input.Kind); // the URL itself is the secret
+        else throw new PilotHttpException(400, "Kanal türü email, webhook, slack veya teams olmalı.");
         await using var c = await source.OpenConnectionAsync(ct);
         await using var tx = await c.BeginTransactionAsync(ct);
         var id = Guid.CreateVersion7();
