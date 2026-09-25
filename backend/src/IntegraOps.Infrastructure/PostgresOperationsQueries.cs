@@ -219,10 +219,10 @@ public sealed class PostgresOperationsQueries(NpgsqlDataSource source, IConfigur
 
     public string AlarmsCsv(List<Dictionary<string, object?>> rows)
     {
-        var csv = new CsvWriter(["islem", "akis", "alarm", "adim", "acilis", "son_zaman", "kapanis", "cozum", "goruldu", "sorumlu", "hata", "test"]);
+        var csv = new CsvWriter(["islem", "akis", "alarm", "adim", "acilis", "son_zaman", "kapanis", "cozum", "neden", "cozum_notu", "goruldu", "sorumlu", "hata", "test"]);
         foreach (var r in rows)
             csv.Row(r["business_id"], r["flow"], r["kind"], r["step_code"], r["opened_at"], r["deadline_at"], r["resolved_at"], r["resolution"],
-                r["acknowledged_at"], r["assigned_name"], r["error"], r["is_test"] is true ? "evet" : "hayır");
+                r["cause"], r["fix"], r["acknowledged_at"], r["assigned_name"], r["error"], r["is_test"] is true ? "evet" : "hayır");
         return csv.ToString();
     }
 }

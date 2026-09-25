@@ -8,7 +8,7 @@ import type { ActionState } from "@/lib/pilot-types";
 export async function adminAction(_previous: ActionState, data: FormData): Promise<ActionState> {
   const field = (name: string) => String(data.get(name) ?? "");
   const op = field("op"); const id = field("id");
-  const withId = ["member-remove", "key-revoke", "channel-toggle", "ack", "retry", "assign", "note", "view-delete", "calendar-delete", "calendar-update", "connection-delete", "key-rotate", "ai-analyze", "ai-feedback"].includes(op);
+  const withId = ["member-remove", "key-revoke", "channel-toggle", "ack", "retry", "assign", "note", "view-delete", "calendar-delete", "calendar-update", "connection-delete", "key-rotate", "ai-analyze", "ai-feedback", "alarm-cause"].includes(op);
   if (withId && !/^[0-9a-f-]{36}$/i.test(id)) return { message: "Kayıt kimliği geçersiz." };
   const days = (name: string) => { const v = field(name).trim(); return v === "" ? null : /^\d{1,4}$/.test(v) ? Number(v) : NaN; };
   let result: { key?: string; secret?: string; invited?: boolean } | undefined;
@@ -65,6 +65,20 @@ export async function adminAction(_previous: ActionState, data: FormData): Promi
       case "retry": await api(`/deliveries/${id}/retry`, "POST"); break;
       case "assign": await api(`/alarms/${id}/assign`, "POST", { userId: field("userId") }); message = field("userId") ? "Sorumlu güncellendi." : "Sorumlu kaldırıldı."; break;
       case "note": await api(`/alarms/${id}/notes`, "POST", { body: field("body") }); message = "Not eklendi."; break;
+      case "alarm-bulk": {
+        const ids = field("ids").split(",").map(s => s.trim()).filter(Boolean);
+        const r = await api<{ changed: number; requested: number }>("/alarms/bulk", "POST", { ids, op: field("bulkOp"), userId: field("userId") || null });
+        message = field("bulkOp") === "assign" ? `${r.changed} alarma sorumlu atandı.` : `${r.changed} alarm görüldü olarak işaretlendi.`; break; }
+      case "threshold-apply": {
+        let steps: Record<string, number>;
+        try { steps = JSON.parse(field("steps")) as Record<string, number>; } catch { return { message: "Öneri verisi okunamadı." }; }
+        const r = await api<{ version: number; changed: number; created: boolean }>(`/flows/${encodeURIComponent(field("flow"))}/threshold-advice/apply`, "POST", { steps });
+        revalidatePath(`/flows/view/${field("flow")}`, "layout");
+        message = `${r.changed} adımın sınırı ${r.version}. sürüm taslağına yazıldı${r.created ? " (taslak oluşturuldu)" : ""}. Yayınlamak için taslağı açın.`; break; }
+      case "ai-threshold": await api(`/flows/${encodeURIComponent(field("flow"))}/ai-threshold?` + new URLSearchParams({ days: field("days") || "30", test: field("test") || "exclude" }), "POST");
+        revalidatePath(`/flows/view/${field("flow")}`, "layout"); message = "Anlatım hazırlandı."; break;
+      case "ai-triage": await api("/ai/triage?" + new URLSearchParams({ test: field("test") || "exclude" }), "POST"); message = "Değerlendirme hazırlandı."; break;
+      case "alarm-cause": await api(`/alarms/${id}/resolution`, "PUT", { cause: field("cause"), fix: field("fix") || null }); message = "Neden ve çözüm kaydedildi; bu adımdaki sonraki alarmlarda hatırlatılacak."; break;
       case "ai-analyze": await api(`/alarms/${id}/ai-analyses`, "POST"); message = "İnceleme hazırlandı."; break;
       case "ai-analyze-transaction": {
         const flow = field("flow"), transactionId = field("transactionId");

@@ -1,7 +1,9 @@
 import Link from "next/link";
 import { api, apiMessage, getAccess, getAssignable } from "@/lib/api";
 import type { AiAnalysis, AiStatus, AlarmDetail, Assignee } from "@/lib/pilot-types";
-import AiAnalysisPanel from "@/components/ai-analysis";
+import AiAnalysisPanel, { aiSignals } from "@/components/ai-analysis";
+import { CauseForm, MemoryPanel } from "@/components/alarm-memory";
+import SourceError from "@/components/source-error";
 import { eventNames, deliveryNames } from "@/lib/pilot-types";
 import { alarmKind, alarmState } from "@/lib/alarms";
 import { Empty, Explain, Message, PageHead, Time } from "@/components/ui";
@@ -54,7 +56,7 @@ export default async function AlarmDetailPage({ params }: { params: Promise<{ id
           {a.resolution && <p className="callout good">{a.resolution === "step_completed"
             ? "Eksik adımın tamamlandığı bildirildi; alarm bu bildirimle kapandı."
             : "İşlemin durumu değişti; bu gecikme koşulu artık geçerli değil."}</p>}
-          {a.error && <div><p className="help" style={{ marginBottom: 6 }}>Kaynak sistemin bildirdiği hata</p><pre className="error-content">{a.error}</pre></div>}
+          <SourceError error={a.error} stepName={a.step_name || a.step_code} />
           {a.instructions && !a.resolved_at && <div className="callout runbook-callout"><strong>Ne yapılmalı ({a.step_name || a.step_code})</strong><p>{a.instructions}</p></div>}
           {canAct && <div className="assign-row">
             {a.assigned_to !== me && <ActionForm action={adminAction} label="Üstlen" compact tone="secondary">
@@ -84,7 +86,13 @@ export default async function AlarmDetailPage({ params }: { params: Promise<{ id
       </section>
     </div>
 
-    <AiAnalysisPanel subject={{ kind: "alarm", id }} status={aiStatus} analyses={analyses} canAct={canAct} isTest={result.alarm.is_test} />
+    <div className="two-col">
+      <CauseForm alarm={a} canAct={canAct} />
+      <MemoryPanel memory={result.memory} flow={a.flow} step={a.step_code} />
+    </div>
+
+    <AiAnalysisPanel subject={{ kind: "alarm", id }} status={aiStatus} analyses={analyses} canAct={canAct} isTest={result.alarm.is_test}
+      signals={aiSignals(result.memory, result.context)} currentCause={a.cause ?? null} />
 
     <section className="surface">
       <div className="surface-head"><div><h2>Notlar</h2><p>İnceleme ve müdahale kayıtları; alarmla birlikte saklanır.</p></div>

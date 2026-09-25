@@ -89,8 +89,8 @@ def main():
     status_code, tx_analysis = api(f"/flows/invoice/transactions/{tx1}/ai-analyses", {}, owner)
     check("İşlem incelemesi başlatılır (201)", status_code == 201 and tx_analysis["status"] == "completed" and tx_analysis["subject_kind"] == "transaction")
     tx_types = {e["type"] for e in tx_analysis["evidence"]}
-    check("İşlem kanıtı işlem, adım, olay ve alarmı içerir; alarm bildirimlerini içermez",
-        {"transaction", "step", "event", "alarm"} <= tx_types and "delivery" not in tx_types and "similar_alarms" not in tx_types)
+    check("İşlem kanıtı işlem, adım, olay, alarm, benzer alarm ve hafızayı içerir; alarm bildirimlerini ve notları içermez",
+        {"transaction", "step", "event", "alarm", "similar_alarms", "memory"} <= tx_types and "delivery" not in tx_types and "note" not in tx_types)
     check("İşlem incelemesi güncel bağlam için eski değildir", tx_analysis["stale"] is False)
     check("İşlem geçmişi ayrı listelenir", require(api(f"/flows/invoice/transactions/{tx1}/ai-analyses", auth=owner))[0]["id"] == tx_analysis["id"])
     check("Alarm geçmişi işlem incelemesini içermez", len(require(api(f"/alarms/{alarm}/ai-analyses", auth=owner))) == 1)

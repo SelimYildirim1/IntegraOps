@@ -8,6 +8,9 @@ import Icon from "@/components/icons";
 import FlowTest from "@/components/flow-test";
 import ActionForm from "@/components/action-form";
 import { createDraftAction } from "@/app/flows/versions-actions";
+import ThresholdAdvicePanel from "@/components/threshold-advice";
+import type { AiStatus, AiThresholdAnalysis, ThresholdAdvice } from "@/lib/pilot-types";
+import { api } from "@/lib/api";
 
 export const dynamic = "force-dynamic";
 
@@ -19,7 +22,17 @@ export default async function FlowDetailPage({ params, searchParams }: { params:
   if (!/^[a-z][a-z0-9-]{0,63}$/.test(flow)) notFound();
   let item: FlowDetails;
   let canWrite = false;
-  try { item = await getFlow(flow); canWrite = (await getAccess()).role !== "viewer"; }
+  const days = /^(7|14|30|60|90)$/.test(String(query.days)) ? Number(query.days) : 30;
+  const test = ["exclude", "include", "only"].includes(String(query.test)) ? String(query.test) : "exclude";
+  let advice: ThresholdAdvice | null = null; let aiStatus: AiStatus | null = null; let thresholdAnalyses: AiThresholdAnalysis[] = [];
+  try {
+    item = await getFlow(flow); canWrite = (await getAccess()).role !== "viewer";
+    // The allowance review is optional: a failure here must not hide the flow itself.
+    [advice, aiStatus, thresholdAnalyses] = await Promise.all([
+      api<ThresholdAdvice>(`/flows/${flow}/threshold-advice?` + new URLSearchParams({ days: String(days), test })).catch(() => null),
+      api<AiStatus>("/ai/status").catch(() => null),
+      api<AiThresholdAnalysis[]>(`/flows/${flow}/ai-threshold?` + new URLSearchParams({ days: String(days), test })).catch(() => [])]);
+  }
   catch (error) {
     if (error instanceof ApiError && error.status === 404) notFound();
     return <Message title="Akış yüklenemedi" description={apiMessage(error)} href="/flows" action="Akışlara dön" icon="alert" />;
@@ -91,6 +104,7 @@ export default async function FlowDetailPage({ params, searchParams }: { params:
         </section>
       </div>
     </div>
+    {advice && <ThresholdAdvicePanel advice={advice} status={aiStatus} analyses={thresholdAnalyses} canAct={canWrite} days={days} test={test} />}
     {canWrite && <FlowTest key={item.id} flow={item} />}
     {canWrite && <section className="surface">
       <div className="surface-head"><div><h2>Örnek veri</h2><p>Kaynak sistem bağlanmadan paneli, alarmları ve raporları dolu görmek için gerçekçi örnek işlemler üretir. Örnek işlemler <span className="mono">DEMO-</span> ile başlar ve gerçek veri gibi görünür.</p></div>

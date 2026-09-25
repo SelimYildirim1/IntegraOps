@@ -87,10 +87,16 @@ public static class PilotEndpoints
 
         projectApi.MapGet("/access", (HttpContext c) => Results.Ok(Actor(c))).WithMetadata(new ProjectRule());
         projectApi.MapGet("/alarms", async (HttpContext c, PostgresPilotQueries q, string? state, string? flow, int? page,
-            string? search, string? from, string? to, string? test, string? assigned, CancellationToken ct)
+            string? search, string? from, string? to, string? test, string? assigned, string? step, string? cause, CancellationToken ct)
             => Results.Ok(await q.Alarms(Actor(c).ProjectId,
-                PostgresPilotQueries.ParseAlarmFilter(state, flow, search, from, to, test, assigned, Actor(c).UserId), page ?? 1, ct)))
+                PostgresPilotQueries.ParseAlarmFilter(state, flow, search, from, to, test, assigned, Actor(c).UserId, step, cause), page ?? 1, ct)))
             .WithMetadata(new ProjectRule());
+        projectApi.MapGet("/alarms/triage", async (HttpContext c, PostgresTriageQueries q, string? test, CancellationToken ct)
+            => Results.Ok(await q.Triage(Actor(c).ProjectId, test ?? "exclude", ct))).WithMetadata(new ProjectRule());
+        projectApi.MapPost("/alarms/bulk", async (HttpContext c, BulkAlarmInput input, PostgresPilotQueries q, CancellationToken ct)
+            => Results.Ok(await q.Bulk(Actor(c), input.Ids, input.Op, input.UserId, ct))).WithMetadata(new ProjectRule("owner,operator"));
+        projectApi.MapPut("/alarms/{id:guid}/resolution", async (HttpContext c, Guid id, ResolutionInput input, PostgresPilotQueries q, CancellationToken ct) =>
+        { await q.SetCause(Actor(c), id, input.Cause, input.Fix, ct); return Results.NoContent(); }).WithMetadata(new ProjectRule("owner,operator"));
         projectApi.MapPost("/alarms/{id:guid}/assign", async (HttpContext c, Guid id, AssignInput input, PostgresPilotQueries q, CancellationToken ct) =>
         {
             var target = input.UserId == "me" ? Actor(c).UserId : string.IsNullOrEmpty(input.UserId) ? null
@@ -204,6 +210,10 @@ public static class PilotEndpoints
             => Results.Ok(await s.Version(Actor(c).ProjectId, Code(flow), number, ct))).WithMetadata(new ProjectRule());
         projectApi.MapGet("/flows/{flow}/versions/{from:int}/diff/{to:int}", async (HttpContext c, string flow, int from, int to, PostgresFlowVersionStore s, CancellationToken ct)
             => Results.Ok(await s.Diff(Actor(c).ProjectId, Code(flow), from, to, ct))).WithMetadata(new ProjectRule());
+        projectApi.MapGet("/flows/{flow}/threshold-advice", async (HttpContext c, string flow, PostgresThresholdAdvisor a, int? days, string? test, CancellationToken ct)
+            => Results.Ok(await a.Advise(Actor(c).ProjectId, Code(flow), days ?? 30, test ?? "exclude", ct))).WithMetadata(new ProjectRule());
+        projectApi.MapPost("/flows/{flow}/threshold-advice/apply", async (HttpContext c, string flow, ThresholdApplyInput input, PostgresThresholdAdvisor a, PostgresFlowVersionStore s, CancellationToken ct)
+            => Results.Ok(await a.Apply(Actor(c), Code(flow), input.Steps, s, ct))).WithMetadata(new ProjectRule("owner,operator"));
         projectApi.MapPost("/flows/{flow}/versions", async (HttpContext c, string flow, PostgresFlowVersionStore s, CancellationToken ct)
             => Results.Json(await s.CreateDraft(Actor(c), Code(flow), ct), statusCode: 201)).WithMetadata(new ProjectRule("owner,operator"));
         projectApi.MapPut("/flows/{flow}/versions/{number:int}", async (HttpContext c, string flow, int number, VersionInput input, PostgresFlowVersionStore s, CancellationToken ct) =>
@@ -279,9 +289,9 @@ public static class PilotEndpoints
             return Results.Text(csv, "text/csv; charset=utf-8", System.Text.Encoding.UTF8);
         }).WithMetadata(new ProjectRule("owner,operator"));
         projectApi.MapGet("/alarms/export", async (HttpContext c, PostgresPilotQueries alarms, PostgresOperationsQueries q, string? state, string? flow,
-            string? search, string? from, string? to, string? test, string? assigned, CancellationToken ct) =>
+            string? search, string? from, string? to, string? test, string? assigned, string? step, string? cause, CancellationToken ct) =>
         {
-            var filter = PostgresPilotQueries.ParseAlarmFilter(state, flow, search, from, to, test, assigned, Actor(c).UserId);
+            var filter = PostgresPilotQueries.ParseAlarmFilter(state, flow, search, from, to, test, assigned, Actor(c).UserId, step, cause);
             var rows = await alarms.AlarmsForExport(Actor(c).ProjectId, filter, PostgresOperationsQueries.ExportLimit, ct);
             await Audit(c, "export.alarms", ct);
             return Results.Text(q.AlarmsCsv(rows), "text/csv; charset=utf-8", System.Text.Encoding.UTF8);

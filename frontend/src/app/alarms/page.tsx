@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { api, apiMessage, getAccess, getFlows, getSavedViews } from "@/lib/api";
-import type { AlarmPage, SavedView } from "@/lib/pilot-types";
+import type { AlarmPage, SavedView, TriageResult } from "@/lib/pilot-types";
 import type { Flow } from "@/lib/types";
 import { testLabels } from "@/lib/types";
 import { dateInput, Empty, Explain, Message, number, PageHead, Time } from "@/components/ui";
@@ -9,6 +9,8 @@ import SavedViews from "@/components/saved-views";
 import Pager from "@/components/pager";
 import Icon from "@/components/icons";
 import { alarmKind, alarmState } from "@/lib/alarms";
+import { alarmCauseNames, triageSignalNames } from "@/lib/pilot-types";
+import type { AlarmCause } from "@/lib/pilot-types";
 import { apiFilters } from "@/lib/filters";
 import { Columns } from "@/components/charts";
 import type { ReportTrend } from "@/lib/pilot-types";
@@ -26,14 +28,17 @@ export default async function AlarmsPage({ searchParams }: { searchParams: Promi
   const to = dateInput.test(str("to")) ? str("to") : "";
   const test = Object.hasOwn(testLabels, str("test")) ? str("test") : "exclude";
   const assigned = ["me", "none"].includes(str("assigned")) ? str("assigned") : "";
-  const filters = { state, flow, search, from, to, test, assigned };
+  const step = /^[a-z][a-z0-9_-]{0,63}$/i.test(str("step")) ? str("step") : "";
+  const cause = str("cause") === "none" || Object.hasOwn(alarmCauseNames, str("cause")) ? str("cause") : "";
+  const filters = { state, flow, search, from, to, test, assigned, step, cause };
   const query = new URLSearchParams(Object.entries(filters).filter(([k, v]) => v && !(k === "state" && v === "open") && !(k === "test" && v === "exclude"))).toString();
-  let result: AlarmPage; let flows: Flow[]; let views: SavedView[]; let canExport = false; let trend: ReportTrend | null = null;
+  let result: AlarmPage; let flows: Flow[]; let views: SavedView[]; let canExport = false; let trend: ReportTrend | null = null; let triage: TriageResult | null = null;
   try {
-    [result, flows, views, canExport, trend] = await Promise.all([
+    [result, flows, views, canExport, trend, triage] = await Promise.all([
       api<AlarmPage>("/alarms?" + new URLSearchParams({ ...apiFilters(filters), page })), getFlows(), getSavedViews("alarms"),
       getAccess().then(a => a.role !== "viewer"),
-      api<ReportTrend>("/reports/trend?" + new URLSearchParams({ flow, test, period: "day", buckets: "30" })).catch(() => null)]);
+      api<ReportTrend>("/reports/trend?" + new URLSearchParams({ flow, test, period: "day", buckets: "30" })).catch(() => null),
+      state === "open" ? api<TriageResult>("/alarms/triage?" + new URLSearchParams({ test })).catch(() => null) : Promise.resolve(null)]);
   } catch (e) { return <Message title="Alarmlar yüklenemedi" description={apiMessage(e)} icon="alert" />; }
   const dayLabel = (iso: string) => new Intl.DateTimeFormat("tr-TR", { day: "2-digit", month: "2-digit", timeZone: "Europe/Istanbul" }).format(new Date(iso));
   const trendAlarms = trend?.buckets.reduce((a, b) => a + b.alarms, 0) ?? 0;
@@ -45,9 +50,13 @@ export default async function AlarmsPage({ searchParams }: { searchParams: Promi
 
   return <>
     <PageHead icon="bell" title="Alarmlar" lede="Süresi aşılan adımlar ve kaynak sistemin bildirdiği hatalar.">
+      <Link className="button secondary" href={"/alarms/triage?" + new URLSearchParams({ test })} prefetch={false}><Icon name="layers" />Sorun grupları</Link>
       {canExport && <a className="button secondary" href={`/export/alarms?${query}`}><Icon name="download" />CSV indir</a>}
       <RefreshControls />
     </PageHead>
+    {triage && triage.groups.length > 0 && <p className={`callout ${triage.groups[0].priority >= 70 ? "bad" : triage.groups[0].priority >= 45 ? "warn" : ""}`}>
+      <strong>{triage.openAlarms} açık alarm, {triage.groups.length} sorun grubu.</strong> En öncelikli: {triage.groups[0].flowName} · <span className="mono">{triage.groups[0].step}</span> ({triage.groups[0].count} alarm{triage.groups[0].signals.length ? `, ${triage.groups[0].signals.map(s => triageSignalNames[s]).join(", ").toLowerCase()}` : ""}).{" "}
+      <Link href={"/alarms/triage?" + new URLSearchParams({ test })} prefetch={false}>Grupları aç</Link></p>}
     {trend && trend.buckets.length > 1 && <div className="trend-card">
       <div className="trend-head">
         <div><h2>Son 30 gün</h2><p>Günlük açılan alarm sayısı.</p></div>
@@ -67,13 +76,18 @@ export default async function AlarmsPage({ searchParams }: { searchParams: Promi
           <option value="">Herkes</option><option value="me">Bendekiler</option><option value="none">Sorumlusu olmayanlar</option></select></div>
         <div className="field"><label htmlFor="a-from">Açılış başlangıcı</label><input id="a-from" name="from" type="date" defaultValue={from} /></div>
         <div className="field"><label htmlFor="a-to">Açılış bitişi</label><input id="a-to" name="to" type="date" defaultValue={to} /></div>
+        <div className="field"><label htmlFor="a-cause">Neden</label><select id="a-cause" name="cause" defaultValue={cause}>
+          <option value="">Tümü</option><option value="none">Nedeni girilmemiş</option>
+          {(Object.keys(alarmCauseNames) as AlarmCause[]).map(c => <option key={c} value={c}>{alarmCauseNames[c]}</option>)}</select></div>
+        {step && <input type="hidden" name="step" value={step} />}
         <div className="field"><label htmlFor="a-test">Test verisi</label><select id="a-test" name="test" defaultValue={test}>
           {Object.entries(testLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></div>
         <button className="button secondary" type="submit"><Icon name="filter" />Uygula</button>
         {filtered && <Link className="reset" href="/alarms" prefetch={false}><Icon name="x" size={14} />Temizle</Link>}
       </form>
       <SavedViews kind="alarms" views={views} basePath="/alarms" currentQuery={query} />
-      {result.items.length > 0 && <div className="table-wrap"><table><thead><tr><th>İşlem</th><th>Akış</th><th>Alarm</th><th>Beklenen adım</th><th>Sorumlu</th><th>Açılış</th><th>Durum</th></tr></thead><tbody>
+      {step && <p className="help">Adım filtresi: <span className="mono">{step}</span> · <Link href={"/alarms?" + new URLSearchParams({ ...filters, step: "" })} prefetch={false}>kaldır</Link></p>}
+      {result.items.length > 0 && <div className="table-wrap"><table><thead><tr><th>İşlem</th><th>Akış</th><th>Alarm</th><th>Beklenen adım</th><th>Sorumlu</th><th>Açılış</th><th>Durum</th><th>Neden</th></tr></thead><tbody>
         {result.items.map(a => { const s = alarmState(a); return <tr key={a.id}>
           <td><Link className="ident" href={`/alarms/${a.id}`} prefetch={false}>{a.business_id}</Link>{a.is_test && <span className="badge test">Test</span>}</td>
           <td>{flowNames.get(a.flow) ?? a.flow}</td>
@@ -82,6 +96,7 @@ export default async function AlarmsPage({ searchParams }: { searchParams: Promi
           <td>{a.assigned_name ?? <span className="muted">—</span>}</td>
           <td className="nowrap"><Time value={a.opened_at} /></td>
           <td><span className={`badge ${s.tone}`}>{s.label}</span></td>
+          <td>{a.cause ? <span className="badge">{alarmCauseNames[a.cause]}</span> : <span className="muted">—</span>}</td>
         </tr>; })}
       </tbody></table></div>}
       {result.items.length === 0 && <Empty icon="check" title={stateLabel ? `Şu anda ${stateLabel} alarm yok` : "Alarm yok"}>

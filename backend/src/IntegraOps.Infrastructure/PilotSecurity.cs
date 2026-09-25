@@ -21,6 +21,9 @@ public sealed record ChannelInput(string Name, string Kind, string Target, strin
 public sealed record EnabledInput(bool Enabled);
 public sealed record AssignInput(string? UserId);
 public sealed record NoteInput(string? Body);
+public sealed record ResolutionInput(string? Cause, string? Fix);
+public sealed record BulkAlarmInput(List<Guid>? Ids, string? Op, string? UserId);
+public sealed record ThresholdApplyInput(Dictionary<string, int>? Steps);
 public sealed record SavedViewInput(string Kind, string Name, string Query);
 public sealed record InviteInput(string Email, string Name, string Role);
 public sealed record ResetRequestInput(string Email);
@@ -62,6 +65,8 @@ public static class PilotSecurity
             .PersistKeysToFileSystem(new DirectoryInfo(directory));
         services.AddSingleton<PostgresIdentityStore>();
         services.AddSingleton<PostgresPilotQueries>();
+        services.AddSingleton<PostgresTriageQueries>();
+        services.AddSingleton<PostgresThresholdAdvisor>();
         services.AddSingleton<NotificationTransport>();
         services.AddSingleton<PostgresFlowVersionStore>();
         services.AddSingleton<IConfigurationReader, ConfigurationReader>();

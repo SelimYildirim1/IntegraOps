@@ -21,6 +21,9 @@ public static class AlarmRules
         return conditions;
     }
 
+    /// <summary>Operator-recorded root cause classes; the resolution memory and the AI assistant share this list.</summary>
+    public static readonly string[] Causes = ["source_outage", "source_bug", "data_error", "threshold", "manual_process", "external", "unknown"];
+
     public static string Resolution(Projection projection, string step) =>
         projection.Status == TransactionStatus.Cancelled ? "cancelled"
         : projection.Steps.Any(s => s.Code == step && s.Observation is "completed" or "skipped") ? "step_completed"
