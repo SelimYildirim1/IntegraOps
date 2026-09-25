@@ -26,6 +26,73 @@ public class AiTests
         Assert.Single(insight.Unknowns);
     }
 
+    [Theory]
+    [InlineData(1, 300)] [InlineData(600, 600)] [InlineData(601, 900)] [InlineData(1044, 1200)] [InlineData(5000, 5400)] [InlineData(700000, 777600)] [InlineData(9_999_999, 2_592_000)]
+    public void Suggested_allowances_round_up_to_values_operators_type(long seconds, int expected) =>
+        Assert.Equal(expected, PostgresThresholdAdvisor.Nice(seconds));
+
+    [Fact]
+    public void Threshold_output_keeps_system_recommendations_and_grounding()
+    {
+        var ids = new HashSet<string> { "S1", "S2", "F1" };
+        var parsed = ThresholdPrompt.Parse("""{"summary":"Fatura sınırı yükseltilmeli.","steps":[{"evidence":["S1","F1"],"recommendation":"raise","reason":"Sahte alarm."},{"evidence":["F1"],"recommendation":"double","reason":"Kanıtsız."}],"unknowns":[]}""", ids);
+        Assert.Equal(2, parsed.Steps.Count);
+        Assert.True(parsed.Steps[0].Grounded); Assert.Equal("raise", parsed.Steps[0].Recommendation);
+        Assert.False(parsed.Steps[1].Grounded); Assert.Equal("keep", parsed.Steps[1].Recommendation);
+    }
+
+    [Fact]
+    public void Triage_output_is_grounded_per_group_and_classes_are_bounded()
+    {
+        var ids = new HashSet<string> { "G1", "G2", "C1", "T1" };
+        var triage = TriagePrompt.Parse("""
+            {"summary":"İki grup var.","groups":[
+              {"evidence":["G1","C1","Z9"],"priority":"critical","hypothesis":"ERP göndericisi durdu.","action":"ERP ekibine yaz.","likely_cause":"source_outage"},
+              {"evidence":["C1"],"priority":"urgent","hypothesis":"Kanıtsız grup.","action":"","likely_cause":"gremlins"},
+              {"evidence":["G2"],"priority":"low"}],
+             "unknowns":["Faturaların ERP'de kesilip kesilmediği"]}
+            """, ids);
+        Assert.Equal(2, triage.Groups.Count);
+        Assert.True(triage.Groups[0].Grounded); Assert.Equal(["G1", "C1"], triage.Groups[0].Evidence); Assert.Equal("critical", triage.Groups[0].Priority);
+        Assert.False(triage.Groups[1].Grounded); Assert.Equal("normal", triage.Groups[1].Priority); Assert.Equal("unknown", triage.Groups[1].LikelyCause);
+        Assert.Single(triage.Unknowns);
+        Assert.Throws<FormatException>(() => TriagePrompt.Parse("{\"groups\":[]}", ids));
+    }
+
+    [Fact]
+    public void Model_json_with_bad_escapes_raw_newlines_or_trailing_commas_is_repaired()
+    {
+        var ids = new HashSet<string> { "A1" };
+        // "\u" followed by a Turkish character (the model tried to escape and gave up), a raw line break, a trailing comma.
+        var broken = "Yanıt:\n{\"summary\":\"Fatura \\uşleminde\nhata\",\"cause\":\"source_error\",\"findings\":[{\"text\":\"E-fatura 503 \\x\",\"evidence\":[\"A1\"]},],\"checks\":[\"Servisi kontrol edin\",],\"unknowns\":[]}";
+        var insight = InsightPrompt.Parse(broken, ids);
+        Assert.Equal("Fatura \\uşleminde\nhata", insight.Summary);
+        Assert.Equal("source_error", insight.Cause);
+        Assert.Single(insight.Findings); Assert.True(insight.Findings[0].Grounded);
+        Assert.Equal(["Servisi kontrol edin"], insight.Checks);
+
+        // Valid escapes are left alone and structural damage still fails loudly.
+        Assert.Equal("Türkçe \"tırnak\" ve \\ ters bölü", InsightPrompt.Parse("{\"summary\":\"T\\u00fcrk\\u00e7e \\\"tırnak\\\" ve \\\\ ters bölü\",\"cause\":\"delay\"}", ids).Summary);
+        Assert.ThrowsAny<Exception>(() => InsightPrompt.Parse("{\"summary\":\"eksik", ids));
+    }
+
+    [Fact]
+    public void Likely_cause_is_kept_only_with_memory_or_source_evidence()
+    {
+        var ids = new HashSet<string> { "A1", "M1", "H1", "C1" };
+        var grounded = InsightPrompt.Parse("""{"summary":"s","cause":"delay","likely_cause":"source_outage","likely_cause_evidence":["H1","A1","Z9"]}""", ids);
+        Assert.Equal("source_outage", grounded.LikelyCause);
+        Assert.Equal(["H1"], grounded.LikelyCauseEvidence);
+
+        var ungrounded = InsightPrompt.Parse("""{"summary":"s","cause":"delay","likely_cause":"threshold","likely_cause_evidence":["A1"]}""", ids);
+        Assert.Equal("unknown", ungrounded.LikelyCause);
+        Assert.Empty(ungrounded.LikelyCauseEvidence!);
+
+        var unknownClass = InsightPrompt.Parse("""{"summary":"s","cause":"delay","likely_cause":"gremlins","likely_cause_evidence":["M1"]}""", ids);
+        Assert.Equal("unknown", unknownClass.LikelyCause);
+        Assert.Equal("unknown", InsightPrompt.Parse("""{"summary":"s","cause":"delay"}""", ids).LikelyCause);
+    }
+
     [Fact]
     public void Unknown_cause_falls_back_and_lists_are_bounded()
     {

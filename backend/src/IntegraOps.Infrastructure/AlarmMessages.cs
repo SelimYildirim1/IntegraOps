@@ -43,7 +43,8 @@ public sealed record AlarmMessage(
     {
         var lines = new List<string> { Title, "", Reason, $"İşlem: {TransactionId}", $"Akış: {Flow}", $"Adım: {StepLabel}" };
         if (Opened) lines.Add($"Beklenen son zaman: {DeadlineAt ?? "—"}"); else lines.Add($"Kapanış nedeni: {ResolutionText}");
-        if (!string.IsNullOrEmpty(Error)) lines.Add($"Açıklama: {Error}");
+        if (IntegraOps.Domain.ErrorExplainer.Plain(Error) is { } plain) lines.Add($"Ne oldu: {plain}");
+        if (!string.IsNullOrEmpty(Error)) lines.Add($"Kaynak sistemin ham hatası: {Error}");
         if (Opened && Instructions.Length > 0) { lines.Add(""); lines.Add("Ne yapılmalı:"); lines.Add(Instructions); }
         if (Link is not null) lines.Add($"Kaynak sistemde aç: {Link}");
         if (PanelUrl is not null) lines.Add($"Panelde aç: {PanelUrl}");
@@ -63,8 +64,10 @@ public sealed record AlarmMessage(
         var blocks = new JsonArray(
             new JsonObject { ["type"] = "header", ["text"] = new JsonObject { ["type"] = "plain_text", ["text"] = Clip(headline, 150), ["emoji"] = true } },
             new JsonObject { ["type"] = "section", ["fields"] = fields });
+        if (IntegraOps.Domain.ErrorExplainer.Plain(Error) is { } plain)
+            blocks.Add(new JsonObject { ["type"] = "section", ["text"] = Md($"*Ne oldu*\n{Clip(plain, 900)}") });
         if (!string.IsNullOrEmpty(Error))
-            blocks.Add(new JsonObject { ["type"] = "section", ["text"] = Md($"*Kaynak sistemin bildirdiği hata*\n```{Clip(Error, 900)}```") });
+            blocks.Add(new JsonObject { ["type"] = "section", ["text"] = Md($"*Kaynak sistemin ham hatası*\n```{Clip(Error, 900)}```") });
         if (Opened && Instructions.Length > 0)
             blocks.Add(new JsonObject { ["type"] = "section", ["text"] = Md($"*Ne yapılmalı*\n{Clip(Instructions, 1500)}") });
         var buttons = new JsonArray();
@@ -94,8 +97,10 @@ public sealed record AlarmMessage(
         var body = new JsonArray(
             new JsonObject { ["type"] = "TextBlock", ["size"] = "Large", ["weight"] = "Bolder", ["color"] = color, ["text"] = $"{Title}: {TransactionId}", ["wrap"] = true },
             new JsonObject { ["type"] = "FactSet", ["facts"] = facts });
+        if (IntegraOps.Domain.ErrorExplainer.Plain(Error) is { } plain)
+            body.Add(new JsonObject { ["type"] = "TextBlock", ["text"] = "Ne oldu: " + Clip(plain, 900), ["wrap"] = true });
         if (!string.IsNullOrEmpty(Error))
-            body.Add(new JsonObject { ["type"] = "TextBlock", ["text"] = "Kaynak sistemin bildirdiği hata: " + Clip(Error, 900), ["wrap"] = true, ["fontType"] = "Monospace" });
+            body.Add(new JsonObject { ["type"] = "TextBlock", ["text"] = "Kaynak sistemin ham hatası: " + Clip(Error, 900), ["wrap"] = true, ["fontType"] = "Monospace" });
         if (Opened && Instructions.Length > 0)
         {
             body.Add(new JsonObject { ["type"] = "TextBlock", ["weight"] = "Bolder", ["text"] = "Ne yapılmalı", ["spacing"] = "Medium" });

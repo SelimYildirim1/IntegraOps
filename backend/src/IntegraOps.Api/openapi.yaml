@@ -454,6 +454,123 @@ paths:
       responses:
         "201": { description: Eklendi }
 
+  /api/v1/alarms/{id}/resolution:
+    put:
+      tags: [Alarmlar]
+      summary: Neden ve çözüm kaydet (çözüm hafızası)
+      description: Aynı akış ve adımdaki sonraki alarmlarda ve yapay zekâ incelemesinde hatırlatılır. Alarm açıkken de kapalıyken de girilebilir.
+      security: [{ Session: [] }]
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [cause]
+              properties:
+                cause: { type: string, enum: [source_outage, source_bug, data_error, threshold, manual_process, external, unknown] }
+                fix: { type: string, maxLength: 1000, nullable: true }
+      responses:
+        "204": { description: Kaydedildi }
+
+  /api/v1/alarms/triage:
+    get:
+      tags: [Alarmlar]
+      summary: Sorun grupları (açık alarmların triyajı)
+      description: Açık alarmlar akış, adım, tür ve hata deseniyle gruplanır; ani artış, sessiz kaynak, sınır şüphesi ve sahipsizlik sinyalleri ile 0–100 öncelik puanı ve eskalasyon mesaj taslağı hesaplanır. Yapay zekâ gerekmez.
+      security: [{ Session: [] }]
+      parameters:
+        - { name: test, in: query, schema: { type: string, enum: [exclude, include, only], default: exclude } }
+      responses:
+        "200": { description: Gruplar, kaynak sağlığı ve toplamlar }
+
+  /api/v1/alarms/bulk:
+    post:
+      tags: [Alarmlar]
+      summary: Toplu atama ya da görüldü işareti
+      security: [{ Session: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [ids, op]
+              properties:
+                ids: { type: array, maxItems: 200, items: { type: string, format: uuid } }
+                op: { type: string, enum: [assign, acknowledge] }
+                userId: { type: string, description: "assign için kullanıcı kimliği ya da me" }
+      responses:
+        "200": { description: "{ changed, requested }" }
+
+  /api/v1/ai/triage:
+    get:
+      tags: [Alarmlar]
+      summary: Triyaj değerlendirme geçmişi
+      security: [{ Session: [] }]
+      parameters:
+        - { name: test, in: query, schema: { type: string, enum: [exclude, include, only], default: exclude } }
+      responses:
+        "200": { description: Son değerlendirmeler; alarm listesi değiştiyse stale=true }
+    post:
+      tags: [Alarmlar]
+      summary: Sorun gruplarını yapay zekâ ile değerlendir
+      description: Hesaplanan gruplar, kaynak sağlığı ve çözüm hafızası modele verilir; her grup için kök neden hipotezi, ilk iş ve neden sınıfı döner. Sayılar ve öncelik puanı değişmez.
+      security: [{ Session: [] }]
+      parameters:
+        - { name: test, in: query, schema: { type: string, enum: [exclude, include, only], default: exclude } }
+      responses:
+        "201": { description: Değerlendirme }
+        "409": { $ref: "#/components/responses/Problem" }
+        "429": { $ref: "#/components/responses/Problem" }
+
+  /api/v1/flows/{flow}/threshold-advice:
+    get:
+      tags: [Akışlar]
+      summary: Süre sınırı önerileri
+      description: Gerçekleşen adım süreleri (p50/p90/p95), aşım oranı, mesai dışı payı ve gecikme alarmlarından her adım için öneri (raise, lower, calendar, keep, wait), önerilen değer ve tahmini etki hesaplanır.
+      security: [{ Session: [] }]
+      parameters:
+        - { name: flow, in: path, required: true, schema: { type: string } }
+        - { name: days, in: query, schema: { type: integer, minimum: 7, maximum: 90, default: 30 } }
+        - { name: test, in: query, schema: { type: string, enum: [exclude, include, only], default: exclude } }
+      responses:
+        "200": { description: Adım bazında inceleme }
+
+  /api/v1/flows/{flow}/threshold-advice/apply:
+    post:
+      tags: [Akışlar]
+      summary: Önerilen sınırları taslağa yaz
+      description: Taslak yoksa oluşturur; yayınlama kullanıcıda kalır.
+      security: [{ Session: [] }]
+      parameters:
+        - { name: flow, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [steps]
+              properties:
+                steps: { type: object, additionalProperties: { type: integer, minimum: 1, maximum: 2592000 }, description: "adım kodu → saniye" }
+      responses:
+        "200": { description: "{ version, changed, created }" }
+
+  /api/v1/flows/{flow}/ai-threshold:
+    post:
+      tags: [Akışlar]
+      summary: Süre sınırı önerilerini yapay zekâ ile anlat
+      security: [{ Session: [] }]
+      parameters:
+        - { name: flow, in: path, required: true, schema: { type: string } }
+        - { name: days, in: query, schema: { type: integer, default: 30 } }
+        - { name: test, in: query, schema: { type: string, enum: [exclude, include, only], default: exclude } }
+      responses:
+        "201": { description: Anlatım; öneriler sistemin hesapladığı gibi kalır }
+        "409": { $ref: "#/components/responses/Problem" }
+
   /api/v1/keys:
     get:
       tags: [Yönetim]

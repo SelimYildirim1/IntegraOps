@@ -70,6 +70,54 @@ export type Alarm = {
   opened_at: string; deadline_at: string | null; resolved_at: string | null; resolution: string | null;
   acknowledged_at: string | null; assigned_to: string | null; assigned_at: string | null; assigned_name: string | null; is_test: boolean;
   step_name?: string | null; instructions?: string; link?: string | null;
+  cause?: AlarmCause | null; fix?: string | null; cause_set_at?: string | null; cause_set_by_name?: string | null;
+};
+export type AlarmCause = "source_outage" | "source_bug" | "data_error" | "threshold" | "manual_process" | "external" | "unknown";
+export const alarmCauseNames: Record<AlarmCause, string> = {
+  source_outage: "Kaynak gönderici durdu", source_bug: "Kaynak sistem hatası", data_error: "Veri veya eşleme hatası",
+  threshold: "Süre sınırı veya takvim", manual_process: "Elle tamamlanan iş", external: "Dış taraf gecikmesi", unknown: "Belirlenemedi",
+};
+export const alarmCauseHints: Record<AlarmCause, string> = {
+  source_outage: "İş kaynakta yapıldı ama olay gönderilmedi (outbox, ajan, ağ).", source_bug: "Kaynak sistem işi yapamadı ya da hata bildirdi.",
+  data_error: "Yanlış işlem numarası, eşleme şablonu ya da eksik alan.", threshold: "İş normal sürdü; sınır ya da takvim yanlıştı (sahte alarm).",
+  manual_process: "İş sistem dışında tamamlandı; olay hiç gelmeyecek.", external: "Kargo, banka ya da başka bir üçüncü taraf gecikti.",
+  unknown: "Araştırıldı, neden bulunamadı.",
+};
+export type AlarmMemory = {
+  window_days: number; total: number; with_cause: number; causes: { cause: AlarmCause; count: number }[];
+  recent: { id: string; business_id: string; opened_at: string; resolved_at: string | null; resolved_after_seconds: number | null;
+    cause: AlarmCause | null; fix: string | null; error: string | null; cause_set_by_name: string | null; note: string | null }[];
+};
+export type AlarmContext = { similar_recent: number; silent_sources: number; dead_deliveries: number };
+export type TriageSignal = "spike" | "source_silent" | "threshold_suspect" | "unassigned" | "stale";
+export const triageSignalNames: Record<TriageSignal, string> = {
+  spike: "Ani artış", source_silent: "Kaynak sessiz", threshold_suspect: "Sınır şüphesi", unassigned: "Sahipsiz", stale: "Eskiyor",
+};
+export type TriageGroup = {
+  key: string; flow: string; flowName: string; step: string; kind: string; fingerprint: string; error: string | null;
+  count: number; firstOpenedAt: string; lastOpenedAt: string; unacknowledged: number; unassigned: number; samples: string[]; ids: string[];
+  baseline6h: number; ratio: number; statsCount: number; p50Seconds: number | null; p95Seconds: number | null; allowanceSeconds: number | null; breachRate: number;
+  dominantCause: AlarmCause | null; dominantCauseCount: number; memoryTotal: number; lastFix: string | null;
+  signals: TriageSignal[]; priority: number; draft: string;
+};
+export type TriageSource = { kind: "connection" | "agent"; name: string; lastSeenAt: string | null; lastError: string | null; silent: boolean };
+export type TriageResult = { computedAt: string; test: string; openAlarms: number; groups: TriageGroup[]; sources: TriageSource[] };
+export type AiTriageAnalysis = Omit<AiAnalysis, "result" | "subject_kind"> & {
+  subject_kind: "triage";
+  result: { summary: string; groups: { hypothesis: string; action: string; priority: "critical" | "high" | "normal" | "low"; likelyCause: AlarmCause; evidence: string[]; grounded: boolean }[]; unknowns: string[] } | null;
+};
+export const triagePriorityNames = { critical: "Kritik", high: "Yüksek", normal: "Normal", low: "Düşük" } as const;
+export type ThresholdRecommendation = "raise" | "lower" | "calendar" | "keep" | "wait";
+export const thresholdRecommendationNames: Record<ThresholdRecommendation, string> = { raise: "Yükselt", lower: "Düşür", calendar: "Takvim bağla", keep: "Uygun", wait: "Veri bekleniyor" };
+export type ThresholdStep = {
+  code: string; name: string; position: number; allowanceSeconds: number | null; n: number; p50Seconds: number | null; p90Seconds: number | null; p95Seconds: number | null;
+  maxSeconds: number | null; breached: number; breachRate: number; medianLateSeconds: number | null; offHoursShare: number; overdueAlarms: number; overdueResolvedByCompletion: number;
+  recommendation: ThresholdRecommendation; suggestedSeconds: number | null; impact: number; reason: string;
+};
+export type ThresholdAdvice = { flow: string; name: string; version: number | null; calendar: string | null; days: number; test: string; computedAt: string; steps: ThresholdStep[] };
+export type AiThresholdAnalysis = Omit<AiAnalysis, "result" | "subject_kind"> & {
+  subject_kind: "threshold";
+  result: { summary: string; steps: { recommendation: string; reason: string; evidence: string[]; grounded: boolean }[]; unknowns: string[] } | null;
 };
 export type AlarmPage = { items: Alarm[]; total: number; page: number; pageSize: number };
 export type AlarmDetail = {
@@ -78,6 +126,7 @@ export type AlarmDetail = {
   deliveries: { id: string; channel: string; kind: string; event: string; state: string; attempts: number;
     available_at: string; last_error: string | null; sent_at: string | null }[];
   notes: { id: string; body: string; created_at: string; author: string }[];
+  memory: AlarmMemory; context: AlarmContext;
 };
 export type AiStatus = {
   enabled: boolean; configured: boolean; planEnabled: boolean; reason: string | null; provider: string; model: string; testMode: boolean;
@@ -91,7 +140,7 @@ export type AiAnalysis = {
   useful_count: number; critical_count: number; stale: boolean;
   evidence: AiEvidence[];
   result: { summary: string; cause: string; findings: { text: string; evidence: string[]; grounded: boolean }[];
-    checks: string[]; unknowns: string[] } | null;
+    checks: string[]; unknowns: string[]; likelyCause?: AlarmCause; likelyCauseEvidence?: string[] | null } | null;
 };
 export type AiRating = "useful" | "wrong" | "incomplete";
 export const aiCauseNames: Record<string, string> = {

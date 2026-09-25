@@ -51,6 +51,10 @@ koşulları yapay zekâdan bağımsız değerlendirilir.
 
 ## 1. Ürün önerisi
 
+> **25 Eylül 2026 — Dalga 2 uygulandı.** İlk uygulamadan çıkan ders: alarmı yeniden anlatan yapay zekâ değer katmıyor.
+> Çözüm hafızası, sorun grupları (triyaj) ve süre sınırı danışmanı `docs/yapay-zeka-dalga-2.md` planına göre kuruldu
+> (migration 017). Aşağıdaki 1.1 bu doğrultuda yeniden çerçevelendi; 1.2 ve eşik danışmanı tamamlandı.
+
 Yapay zekâ ilk olarak **alarmı açıklayan ve incelemeyi yönlendiren operasyon asistanı** olarak eklenir. Mevcut verilerle
 başlanabilir ve müşteriye somut faydası gösterilebilir.
 
@@ -60,7 +64,12 @@ hızlandıran operasyon platformu.
 **Temel ilke:** Yapay zekâ **gördüğü kanıtı ve henüz bilmediği şeyi ayırır.** Sayıları ve kayıtları backend hesaplar;
 model yalnızca bunları açıklar. Her bulgu dayandığı kayda bağlanır.
 
-### 1.1 Yapay zekâ ile alarm inceleme — ilk özellik ✅ altyapı hazır
+### 1.1 Yapay zekâ ile alarm inceleme — ilk özellik ✅ (Dalga 2 ile hafızalı)
+
+**Dalga 2 değişikliği:** Model artık yalnızca alarm kanıtını değil, **çözüm hafızasını** (aynı akış ve adımdaki geçmiş
+alarmların operatörce kaydedilen nedeni ve çözümü), eş zamanlı benzer alarmları ve kaynak sağlığını (sessiz bağlantı/ajan)
+görür; `likely_cause` alanıyla operatör neden sınıflarından birini kanıt kimliğiyle önerir ve tek tıkla alarma kaydedilir.
+Söyleyecek yeni şey yoksa (geçmiş, benzer alarm, sessiz kaynak ya da ölü teslimat yoksa) kart gösterilmez.
 
 - **Nerede:** İşlem ve alarm detay sayfası, "Yapay zekâ ile incele" işlemi.
 - **Ne yapar:**
@@ -77,7 +86,7 @@ model yalnızca bunları açıklar. Her bulgu dayandığı kayda bağlanır.
 - **Pazarlama:** "Kanıta dayalı yapay zekâ destekli alarm analizi."
 - **Zamanlama:** V1 kabulünden hemen sonra. Uzun geçmiş veri birikimi gerekmez.
 
-### 1.2 Benzer alarmları birleştirme ve ortak sorun önerisi
+### 1.2 Benzer alarmları birleştirme ve ortak sorun önerisi ✅ Dalga 2 (`/alarms/triage`)
 
 - **Nerede:** Alarm listesi ve yeni bir "Sorun grupları" görünümü.
 - **Örnek:** Onlarca sipariş aynı fatura adımında takıldığında bunları tek bir olası ortak sorun olarak göstermek.
@@ -163,7 +172,9 @@ ifadesinin arkasında gösterilebilir bir özellik ve gerçek kullanıcı sonucu
 | Geri bildirim | `PostgresAiStore.Feedback`, `ai_feedback` tablosu | Alarm sayfasındaki Faydalı / Hatalı / Eksik düğmeleri | ✅ Altyapı |
 | Plan eklentisi | `Plans.AiDefaults`, `organization_limits.ai_enabled`, `PlanInput.AiEnabled` | `/admin` plan formu, organizasyon sayfası | ✅ Altyapı |
 | İşlem detayından inceleme | Aynı uç; işlem sayfası açık alarmı çağırır | `app/transactions/[flow]/[id]` | ⏳ |
-| Sorun grupları | `PostgresPilotQueries.Alarms` + yeni gruplama sorgusu | `app/alarms` yeni görünüm | ⏳ |
+| Çözüm hafızası | `alarms.cause/fix` (migration 017), `PUT /alarms/{id}/resolution`, `PostgresPilotQueries.Memory` | `components/alarm-memory.tsx`, alarm sayfası | ✅ Dalga 2 |
+| Sorun grupları | `PostgresTriageQueries`, `POST /alarms/bulk`, `PostgresAiStore.AnalyzeTriage` (`triage-v1`) | `app/alarms/triage`, alarm listesi özeti | ✅ Dalga 2 |
+| Eşik danışmanı | `PostgresThresholdAdvisor`, `…/threshold-advice[/apply]`, `AnalyzeThreshold` (`threshold-v1`) | `components/threshold-advice.tsx`, akış sayfası | ✅ Dalga 2 |
 | Operasyona sor | `ITransactionQueries.ListAsync`, `PostgresPilotQueries.Alarms`, `PostgresReportQueries` filtre olarak araç çağrısı | Panel üst alanı | ⏳ |
 | Günlük özet | `DigestScheduler` (worker) + `PostgresReportQueries` → `ai_analyses` (`subject_kind='digest'`) | Ana panel, özet e-postası | ⏳ Tablo hazır |
 | Gecikme riski | `reconciler/` (Python) + `transaction_step_stats` | İşlem listesi | ⏳ Veri birikimi gerekli |

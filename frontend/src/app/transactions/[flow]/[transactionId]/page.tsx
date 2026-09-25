@@ -2,7 +2,8 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { api, ApiError, apiMessage, getAccess, getTransaction } from "@/lib/api";
 import type { AiAnalysis, AiStatus } from "@/lib/pilot-types";
-import AiAnalysisPanel from "@/components/ai-analysis";
+import AiAnalysisPanel, { aiSignalsFrom, type AiSignalCounts } from "@/components/ai-analysis";
+import SourceError from "@/components/source-error";
 import type { DelayInfo, TimelineStep, TransactionDetail } from "@/lib/types";
 import { stepKindLabels } from "@/lib/types";
 import { Badge, DeadlineMeter, Empty, Explain, Message, number, PageHead, Time } from "@/components/ui";
@@ -26,9 +27,10 @@ export default async function Detail({ params }: {
   }
   // AI panel is optional: a failure here must not hide the transaction itself.
   const aiPath = `/flows/${encodeURIComponent(flow)}/transactions/${encodeURIComponent(transactionId)}/ai-analyses`;
-  const [aiStatus, analyses, canAct] = await Promise.all([
+  const [aiStatus, analyses, canAct, aiCounts] = await Promise.all([
     api<AiStatus>("/ai/status").catch(() => null), api<AiAnalysis[]>(aiPath).catch(() => [] as AiAnalysis[]),
-    getAccess().then(a => a.role !== "viewer").catch(() => false)]);
+    getAccess().then(a => a.role !== "viewer").catch(() => false),
+    api<AiSignalCounts>(aiPath.replace(/ai-analyses$/, "ai-signals")).catch(() => null)]);
   const delay: DelayInfo = item.delay ?? {
     state: "pending_evaluation", step: null, startedAt: null, deadlineAt: null, checkedAt: null,
   };
@@ -98,7 +100,7 @@ export default async function Detail({ params }: {
                       : isExpected || pendingBranch
                         ? <DeadlineMeter startedAt={delay.startedAt} deadlineAt={isExpected ? delay.deadlineAt : (delay.startedAt ? new Date(Date.parse(delay.startedAt) + step.maxDelaySeconds * 1000).toISOString() : null)} state={delay.state} />
                         : <span className="gap">{spanText(step.maxDelaySeconds)} tanınan süre</span>}
-                  {step.error && <pre className="error-content" style={{ marginTop: 10 }}>{step.error}</pre>}
+                  {step.error && <div style={{ marginTop: 10 }}><SourceError error={step.error} /></div>}
                   {(step.link || (step.instructions && (isExpected || pendingBranch || step.observation === "failed"))) && <div className="runbook">
                     {step.instructions && (isExpected || pendingBranch || step.observation === "failed") && <p><strong>Ne yapılmalı:</strong> {step.instructions}</p>}
                     {step.link && <a className="button quiet small" href={step.link} target="_blank" rel="noopener noreferrer"><Icon name="open" size={14} />Kaynak sistemde aç</a>}
@@ -137,11 +139,12 @@ export default async function Detail({ params }: {
           <td className="mono" style={{ fontSize: 12 }}>{event.eventId}</td>
           <td><Badge value={event.status} /></td>
           <td className="nowrap"><Time value={event.occurredAt} /></td><td className="nowrap"><Time value={event.receivedAt} /></td>
-          <td>{event.error ? <span className="error-content" style={{ display: "inline-block", padding: "4px 8px" }}>{event.error}</span> : <span className="muted">—</span>}</td>
+          <td>{event.error ? <SourceError error={event.error} compact /> : <span className="muted">—</span>}</td>
         </tr>)}
         empty={<Empty icon="inbox" title="Henüz işlenmiş bildirim yok">İlk bildirim işlendiğinde burada listelenir.</Empty>} />
     </section>
-    <AiAnalysisPanel subject={{ kind: "transaction", flow, transactionId }} status={aiStatus} analyses={analyses} canAct={canAct} isTest={/^TEST-/.test(item.transactionId)} />
+    <AiAnalysisPanel subject={{ kind: "transaction", flow, transactionId }} status={aiStatus} analyses={analyses} canAct={canAct} isTest={/^TEST-/.test(item.transactionId)}
+      signals={aiSignalsFrom(aiCounts)} />
     <p className="help"><Link href={`/flows/view/${encodeURIComponent(item.flow)}`} prefetch={false}><Icon name="workflow" size={14} /> Bu akışın tanımını görüntüle</Link></p>
   </>;
 }

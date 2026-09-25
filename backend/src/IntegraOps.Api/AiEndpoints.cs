@@ -20,8 +20,18 @@ public static class AiEndpoints
             => Results.Json(await s.AnalyzeAlarm(PilotEndpoints.Actor(c), id, ct), statusCode: 201)).WithMetadata(new ProjectRule("owner,operator"));
         projectApi.MapGet("/flows/{flow}/transactions/{transactionId}/ai-analyses", async (HttpContext c, string flow, string transactionId, PostgresAiStore s, CancellationToken ct)
             => Results.Ok(await s.TransactionAnalyses(PilotEndpoints.Actor(c), flow, transactionId, ct))).WithMetadata(new ProjectRule());
+        projectApi.MapGet("/flows/{flow}/transactions/{transactionId}/ai-signals", async (HttpContext c, string flow, string transactionId, PostgresPilotQueries q, CancellationToken ct)
+            => Results.Ok(await q.TransactionSignals(PilotEndpoints.Actor(c).ProjectId, flow, transactionId, ct))).WithMetadata(new ProjectRule());
         projectApi.MapPost("/flows/{flow}/transactions/{transactionId}/ai-analyses", async (HttpContext c, string flow, string transactionId, PostgresAiStore s, CancellationToken ct)
             => Results.Json(await s.AnalyzeTransaction(PilotEndpoints.Actor(c), flow, transactionId, ct), statusCode: 201)).WithMetadata(new ProjectRule("owner,operator"));
+        projectApi.MapGet("/ai/triage", async (HttpContext c, PostgresAiStore s, string? test, CancellationToken ct)
+            => Results.Ok(await s.TriageAnalyses(PilotEndpoints.Actor(c), test ?? "exclude", ct))).WithMetadata(new ProjectRule());
+        projectApi.MapPost("/ai/triage", async (HttpContext c, PostgresAiStore s, string? test, CancellationToken ct)
+            => Results.Json(await s.AnalyzeTriage(PilotEndpoints.Actor(c), test ?? "exclude", ct), statusCode: 201)).WithMetadata(new ProjectRule("owner,operator"));
+        projectApi.MapGet("/flows/{flow}/ai-threshold", async (HttpContext c, string flow, PostgresAiStore s, int? days, string? test, CancellationToken ct)
+            => Results.Ok(await s.ThresholdAnalyses(PilotEndpoints.Actor(c), IntegraOps.Application.InputValidation.FlowCode(flow), days ?? 30, test ?? "exclude", ct))).WithMetadata(new ProjectRule());
+        projectApi.MapPost("/flows/{flow}/ai-threshold", async (HttpContext c, string flow, PostgresAiStore s, int? days, string? test, CancellationToken ct)
+            => Results.Json(await s.AnalyzeThreshold(PilotEndpoints.Actor(c), IntegraOps.Application.InputValidation.FlowCode(flow), days ?? 30, test ?? "exclude", ct), statusCode: 201)).WithMetadata(new ProjectRule("owner,operator"));
         projectApi.MapPut("/ai/analyses/{id:guid}/feedback", async (HttpContext c, Guid id, AiFeedbackInput input, PostgresAiStore s, CancellationToken ct) =>
         { await s.Feedback(PilotEndpoints.Actor(c), id, input.Rating, input.Comment, ct); return Results.NoContent(); }).WithMetadata(new ProjectRule());
     }

@@ -128,4 +128,28 @@ public sealed class WaveOneTests
         }
         Assert.Equal(FlowTemplates.All.Count, FlowTemplates.All.Select(t => t.Code).Distinct().Count());
     }
+
+    [Theory]
+    [InlineData("GİB e-fatura entegratörü 503 Service Unavailable; 3 deneme başarısız (fatura no atanamadı)", "unavailable", "E-fatura servisi yanıt vermedi (geçici kesinti)", "(HTTP 503)", "(3 deneme yapıldı)")]
+    [InlineData("ERP outbox timeout after 30000 ms (job 48121)", "timeout", "ERP sistemi beklenen sürede yanıt vermedi", "", "")]
+    [InlineData("Vergi numarası geçersiz", "validation", "Gönderilen bilgi kabul edilmedi (veri hatası)", "", "")]
+    [InlineData("Kargo API 502", "unavailable", "Kargo firması servisi yanıt vermedi (geçici kesinti)", "(HTTP 502)", "")]
+    [InlineData("payment declined by bank", "payment", "Ödeme reddedildi", "", "")]
+    public void Source_errors_are_explained_in_plain_language(string error, string kind, string title, string http, string retries)
+    {
+        var x = IntegraOps.Domain.ErrorExplainer.Explain(error)!;
+        Assert.Equal(kind, x.Kind); Assert.Equal(title, x.Title);
+        if (http.Length > 0) Assert.Contains(http, x.Detail);
+        if (retries.Length > 0) Assert.Contains(retries, x.Detail);
+        Assert.False(string.IsNullOrWhiteSpace(x.Who));
+    }
+
+    [Fact]
+    public void Unrecognised_or_empty_errors_are_not_explained()
+    {
+        Assert.Null(IntegraOps.Domain.ErrorExplainer.Explain(""));
+        Assert.Null(IntegraOps.Domain.ErrorExplainer.Explain("  "));
+        Assert.Null(IntegraOps.Domain.ErrorExplainer.Explain("X7Q"));
+        Assert.Null(IntegraOps.Domain.ErrorExplainer.Plain(null));
+    }
 }

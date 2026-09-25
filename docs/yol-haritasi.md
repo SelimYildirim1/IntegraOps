@@ -456,3 +456,4 @@ Kaynak: `docs/urun-eksikleri-ve-pazarlama.md` bölüm 7. Ayrıntı: `docs/dalga-
 | 22 Eylül 2026 | Aşama 12 | Bağlantılar, eşleme şablonları, anahtar yenileme, Python/Node SDK (migration 010), 32 kontrol geçti. **Aşama 12 tamamlandı** |
 | 23 Eylül 2026 | Aşama 15 | Yapay zekâ altyapısı: model bağımsız katman, kanıta dayalı alarm inceleme, geri bildirim, plan eklentisi (migration 013–014), 25 kontrol geçti. Model seçimi bekleniyor |
 | 24 Eylül 2026 | Dalga 1 | Slack/Teams kanalları, adım talimatı ve kaynak bağlantısı, sektör şablonları, örnek veri, OpenAPI ve Geliştirici sayfası. Migration 015 |
+| 25 Eylül 2026 | Yapay zekâ Dalga 2 | Çözüm hafızası, sorun grupları ve toplu işlem, süre sınırı danışmanı ve taslağa uygulama; üç istem profili (insight-v3, triage-v1, threshold-v1). Migration 017; `scripts/verify_ai_wave2.py` Gemini ile 57 kontrol geçti. Plan: `docs/yapay-zeka-dalga-2.md` |
