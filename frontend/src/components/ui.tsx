@@ -12,7 +12,7 @@ export const observationLabels: Record<string, string> = {
 };
 export const delayLabels: Record<string, string> = {
   none: "Yok", waiting: "Bekleniyor", overdue: "Gecikmiş",
-  pending_processing: "Bildirim işleniyor", pending_evaluation: "Kontrol bekleniyor",
+  pending_processing: "Bildirim işleniyor", pending_evaluation: "Kontrol bekleniyor", catching_up: "Geç teslim; kaynak bekleniyor",
 };
 
 export function Badge({ value, delay = false }: { value: string; delay?: boolean }) {

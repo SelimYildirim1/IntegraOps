@@ -11,6 +11,9 @@ var connectionString = builder.Configuration.GetConnectionString("Postgres")
     ?? throw new InvalidOperationException("ConnectionStrings__Postgres gerekli.");
 var rabbitUri = builder.Configuration["RabbitMQ:Uri"]
     ?? throw new InvalidOperationException("RabbitMQ__Uri gerekli.");
+// Late delivery (docs/entegrasyon-sozlesmesi.md): events older than LateDeliverySeconds hold new alarms for CatchUpGraceSeconds.
+IntegraOps.Domain.CatchUp.LateAfter = TimeSpan.FromSeconds(Math.Clamp(builder.Configuration.GetValue("Alarms:LateDeliverySeconds", 300), 30, 86400));
+IntegraOps.Domain.CatchUp.Grace = TimeSpan.FromSeconds(Math.Clamp(builder.Configuration.GetValue("Alarms:CatchUpGraceSeconds", 120), 0, 3600));
 builder.Services.AddSingleton(_ => NpgsqlDataSource.Create(connectionString));
 builder.Services.AddSingleton<PostgresTrackingStore>();
 builder.Services.AddSingleton<PostgresDelayStore>();

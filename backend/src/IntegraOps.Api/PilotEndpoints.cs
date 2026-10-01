@@ -224,6 +224,8 @@ public static class PilotEndpoints
         { await s.DeleteDraft(Actor(c), Code(flow), number, ct); return Results.NoContent(); }).WithMetadata(new ProjectRule("owner,operator"));
         projectApi.MapPut("/flows/{flow}", async (HttpContext c, string flow, FlowNameInput input, PostgresFlowVersionStore s, CancellationToken ct) =>
         { await s.Rename(Actor(c), Code(flow), input, ct); return Results.NoContent(); }).WithMetadata(new ProjectRule("owner,operator"));
+        projectApi.MapDelete("/flows/{flow}", async (HttpContext c, string flow, PostgresFlowVersionStore s, CancellationToken ct)
+            => Results.Ok(await s.Delete(Actor(c), Code(flow), ct))).WithMetadata(new ProjectRule("owner"));
 
         // Dalga 1: sector templates and sample data so a new project shows a living board before any source is connected.
         projectApi.MapGet("/flows/catalog", () => Results.Ok(FlowTemplates.Catalog())).WithMetadata(new ProjectRule());

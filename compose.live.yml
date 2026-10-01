@@ -82,6 +82,8 @@ services:
       RabbitMQ__Uri: "amqp://integraops:${RABBITMQ_PASSWORD}@rabbitmq:5672/"
       Notifications__WebhookOrigins: ${WEBHOOK_ORIGINS:-}
       Notifications__RetryBaseSeconds: 30
+      Alarms__LateDeliverySeconds: ${LATE_DELIVERY_SECONDS:-300}
+      Alarms__CatchUpGraceSeconds: ${CATCH_UP_GRACE_SECONDS:-120}
       Panel__BaseUrl: https://${PANEL_HOST}
       Smtp__Host: ${SMTP_HOST:?Required}
       Smtp__Port: ${SMTP_PORT:-587}

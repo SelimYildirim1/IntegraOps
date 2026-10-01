@@ -1,0 +1,43 @@
+# Override for a host that already runs another product behind its own nginx (docs/canli-ortam.md, "Paylaşımlı sunucu").
+# Enabled with LIVE_COMPOSE_EXTRA=compose.shared-host.yml in .env.live.
+#   - Caddy is not started; the host nginx terminates TLS (deploy/nginx/integraops.conf.template).
+#   - Panel and API are published on loopback only, so no new port is opened to the internet.
+#   - CPU and memory caps keep this stack from starving the neighbour. API_REPLICAS must stay 1 (fixed host port).
+services:
+  caddy:
+    profiles: [caddy]
+  panel:
+    ports: ["127.0.0.1:${PANEL_PORT:-4000}:3000"]
+    cpus: 0.5
+    mem_limit: 384m
+  api:
+    ports: ["127.0.0.1:${API_PORT:-4001}:8080"]
+    cpus: 1.0
+    mem_limit: 768m
+  worker:
+    cpus: 1.0
+    mem_limit: 512m
+  postgres:
+    cpus: 1.0
+    mem_limit: 1g
+  rabbitmq:
+    cpus: 1.0
+    mem_limit: 512m
+    # The CLI health probe is slow under a CPU cap; a neighbour's autoheal restarts anything reported unhealthy.
+    healthcheck:
+      interval: 15s
+      timeout: 20s
+      retries: 8
+      start_period: 120s
+  prometheus:
+    cpus: 0.5
+    mem_limit: 512m
+  alertmanager:
+    cpus: 0.25
+    mem_limit: 128m
+  grafana:
+    cpus: 0.5
+    mem_limit: 384m
+  node-exporter:
+    cpus: 0.25
+    mem_limit: 128m

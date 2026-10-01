@@ -70,6 +70,12 @@ Her deneme sonucu ayrı bir iş olayıdır ve kendi `eventId` değerini alır. A
 
 Olaylar ters sırada ulaşabilir. IntegraOps sıralamayı `occurredAt` ile yapar.
 
+### Geç teslim ve toplu yeniden gönderim
+
+Kaynak bir kesintiden sonra biriken olayları gönderdiğinde ya da geçmiş kayıtlar toplu yüklendiğinde olaylar gerçekleştikleri andan çok sonra ulaşır. Son ulaşan olay gerçekleştiği andan en az 5 dakika sonra alındıysa IntegraOps o işlem için **yeni alarm açmayı 2 dakika bekletir**; işlem bu sürede "Geç teslim; kaynak bekleniyor" durumunda görünür. Sürenin içinde işlemin kalan olayları gelirse alarm hiç açılmaz; gelmezse süre sonunda alarm normal kurallarla açılır. Açık alarmların kapanması bekletilmez. Zamanında gelen olaylarda davranış değişmez.
+
+Eşikler worker'da `Alarms__LateDeliverySeconds` (varsayılan 300) ve `Alarms__CatchUpGraceSeconds` (varsayılan 120; 0 bekletmeyi kapatır) ile ayarlanır. Kaynak, bir işlemin olaylarını aralarında bekletme süresinden uzun boşluk bırakmadan göndermelidir.
+
 ## 5. Kaynak tarafında kalıcı gönderim kuyruğu
 
 **Temel şart:** İş kaydı ve gönderilecek olay, kaynak veritabanında **aynı veritabanı işlemi içinde** yazılır. İşlem geri alınırsa olay da kaybolur, işlem onaylanırsa olay da kalıcı olur. IntegraOps'a HTTP çağrısı bu veritabanı işleminin içinde yapılmaz.

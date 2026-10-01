@@ -16,6 +16,7 @@ export type FlowDetails = {
   versions: FlowVersionRow[];
   hasDraft: boolean;
   demoCount?: number;
+  transactionCount?: number;
 };
 export type FlowVersionDetails = {
   flow: string; name: string; version: number; state: "draft" | "published"; effectiveFrom: string | null; publishedAt: string | null;

@@ -64,8 +64,8 @@ public static partial class InputValidation
 
         delay = string.IsNullOrWhiteSpace(delay) ? null : delay.Trim().ToLowerInvariant();
         if (delay is not (null or "none" or "waiting" or "overdue"
-            or "pending_processing" or "pending_evaluation"))
-            errors["delay"] = ["none, waiting, overdue, pending_processing veya pending_evaluation kullanın."];
+            or "pending_processing" or "pending_evaluation" or "catching_up"))
+            errors["delay"] = ["none, waiting, overdue, pending_processing, pending_evaluation veya catching_up kullanın."];
         if (page < 1) errors["page"] = ["Sayfa en az 1 olmalı."];
         if (pageSize is < 1 or > 100) errors["pageSize"] = ["Sayfa boyutu 1–100 arasında olmalı."];
 

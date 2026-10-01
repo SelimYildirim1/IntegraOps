@@ -9,10 +9,13 @@ public static class PostgresAlarmStore
 {
     // The caller already holds the transaction row lock. Events and delivery jobs
     // commit atomically with the updated projection; repeated scans cannot re-open an active alarm.
-    internal static async Task Sync(NpgsqlConnection c, NpgsqlTransaction tx, FlowDefinition flow,
-        Guid transaction, Projection projection, DelayAssessment delay, DateTimeOffset now, CancellationToken ct)
+    // holdNew: the source is catching up (CatchUp.Until); existing alarms still resolve, new ones wait.
+    // Returns true when an alarm was held back, so the caller schedules another check.
+    internal static async Task<bool> Sync(NpgsqlConnection c, NpgsqlTransaction tx, FlowDefinition flow,
+        Guid transaction, Projection projection, DelayAssessment delay, DateTimeOffset now, CancellationToken ct, bool holdNew = false)
     {
-        if (delay.State == "pending_processing") return;
+        if (delay.State == "pending_processing") return false;
+        var held = false;
         var desired = AlarmRules.Current(projection, delay, now);
         var active = await Rows(c, tx, "SELECT id,kind,step_code FROM alarms WHERE project_id=@p AND transaction_id=@t AND resolved_at IS NULL",
             ct, ("p", flow.ProjectId), ("t", transaction));
@@ -33,6 +36,7 @@ public static class PostgresAlarmStore
                     ("e", condition.Error), ("d", condition.DeadlineAt), ("id", previous["id"]));
                 continue;
             }
+            if (holdNew) { held = true; continue; }
             var id = Guid.CreateVersion7();
             await Run(c, tx, """
                 INSERT INTO alarms(id,project_id,transaction_id,kind,step_code,error,deadline_at)
@@ -42,6 +46,7 @@ public static class PostgresAlarmStore
             await Record(c, tx, id, "opened", null, ct);
         }
         await Run(c, tx, "UPDATE transactions SET alarm_checked_at=clock_timestamp() WHERE id=@t", ct, ("t", transaction));
+        return held;
     }
 
     internal static async Task Record(NpgsqlConnection c, NpgsqlTransaction tx, Guid alarm, string kind, Guid? actor, CancellationToken ct)

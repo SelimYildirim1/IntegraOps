@@ -170,9 +170,24 @@ def main():
         and api("/flows/ecommerce-order/demo", {"count": 1}, viewer)[0] == 403)
     check("Gönderim anahtarı şablon ya da örnek veri ucunu kullanamaz", api("/flows/from-template", {"template": "insurance-claim"}, ingest)[0] == 403)
 
+    # --- Flow removal ---
+    check("İzleyici ve gönderim anahtarı akış silemez",
+        api("/flows/ecommerce-order", auth=viewer, method="DELETE")[0] == 403 and api("/flows/ecommerce-order", auth=ingest, method="DELETE")[0] == 403)
+    check("Bilinmeyen akış silinemez (404)", api("/flows/yok-" + suffix, method="DELETE")[0] == 404)
+    deleted = require(api("/flows/ecommerce-order", method="DELETE"))
+    check("Akış işlemiyle birlikte silindi", deleted == {"flow": "ecommerce-order", "transactions": 1})
+    check("Silinen akış, işlemi ve alarmları artık yok",
+        api("/flows/ecommerce-order")[0] == 404 and api("/alarms/" + alarm_id)[0] == 404
+        and "ecommerce-order" not in {f["code"] for f in require(api("/flows"))}
+        and require(api("/transactions/summary"))["total"] == 0 and require(api("/alarms?state=all"))["total"] == 0)
+    check("Diğer akış yerinde kaldı", require(api("/flows/kargo-" + suffix))["code"] == "kargo-" + suffix)
+    check("Silinen akışa gelen bildirim kabul edilmez", api("/events", event("order-created"), ingest)[0] not in (200, 202))
+    check("Aynı kodla akış yeniden oluşturulabilir", require(api("/flows/from-template", {"template": "ecommerce-order"}))["code"] == "ecommerce-order"
+        and require(api("/flows/ecommerce-order"))["transactionCount"] == 0)
+
     audit = require(api("/operations"))["audit"]
-    check("Denetim kaydı şablon, örnek veri ve kanal işlemlerini tutar",
-        {a["action"] for a in audit} >= {"flow.template", "demo.generate", "demo.delete", "channel.create"})
+    check("Denetim kaydı şablon, örnek veri, kanal ve akış silme işlemlerini tutar",
+        {a["action"] for a in audit} >= {"flow.template", "demo.generate", "demo.delete", "channel.create", "flow.delete"})
     print(f"\nTamamlandı: {passed} kontrol geçti.")
 
 

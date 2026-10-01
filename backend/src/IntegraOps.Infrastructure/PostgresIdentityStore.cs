@@ -28,6 +28,7 @@ public sealed class PostgresIdentityStore(NpgsqlDataSource source)
         await Run(c, tx, "INSERT INTO app_users(id,email,name,password_hash) VALUES(@id,@e,@n,@h)", ct,
             ("id", id), ("e", email), ("n", name), ("h", hasher.HashPassword(email, password)));
         await Run(c, tx, "INSERT INTO project_members(project_id,user_id,role) VALUES(@p,@u,'owner')", ct, ("p", project), ("u", id));
+        await Run(c, tx, "INSERT INTO organization_members(organization_id,user_id,role) SELECT organization_id,@u,'owner' FROM projects WHERE id=@p", ct, ("p", project), ("u", id));
         await Audit(c, tx, project, id, "owner.bootstrap", id.ToString(), ct);
         await tx.CommitAsync(ct);
     }

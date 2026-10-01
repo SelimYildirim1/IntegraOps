@@ -7,7 +7,8 @@ import Icon from "@/components/icons";
 
 export const dynamic = "force-dynamic";
 
-export default async function FlowsPage() {
+export default async function FlowsPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
+  const deleted = (await searchParams).deleted;
   let flows: Flow[];
   let canWrite = false;
   try { flows = await getFlows(); canWrite = (await getAccess()).role !== "viewer"; }
@@ -16,6 +17,8 @@ export default async function FlowsPage() {
     <PageHead icon="workflow" title="Akışlar" lede="İzlediğiniz süreçler: sırayla beklenen adımlar ve her adım için tanınan süre.">
       {canWrite && <Link className="button" href="/flows/new" prefetch={false}><Icon name="plus" />Yeni akış</Link>}
     </PageHead>
+    {typeof deleted === "string" && /^[a-z][a-z0-9-]{0,63}$/.test(deleted) && <p className="callout good" style={{ marginBottom: 20 }}>
+      <strong><span className="mono">{deleted}</span> akışı silindi.</strong> İşlemleri, alarmları ve sürümleri kaldırıldı.</p>}
     <section className="surface">
       <div className="surface-head"><h2>Tanımlı akışlar</h2><span className="count">{number(flows.length)} akış</span></div>
       <PagedTable unit="akış"

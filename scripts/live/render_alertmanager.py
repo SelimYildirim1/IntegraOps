@@ -46,6 +46,7 @@ def main():
     fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o644)
     with os.fdopen(fd, "w", encoding="utf-8") as f:
         f.write(text)
+    os.chmod(tmp, 0o644)  # the live scripts run with umask 077, which would otherwise strip the read bit
     os.replace(tmp, target)
     print(target)
 

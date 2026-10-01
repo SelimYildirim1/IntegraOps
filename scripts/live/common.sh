@@ -39,8 +39,12 @@ STATE_DIR="$(env_get LIVE_STATE_DIR)"
 [ -n "$STATE_DIR" ] || { echo "LIVE_STATE_DIR gerekli." >&2; exit 1; }
 PROJECT="$(env_get COMPOSE_PROJECT_NAME)"; PROJECT="${PROJECT:-integraops-live}"
 
+EXTRA_COMPOSE="$(env_get LIVE_COMPOSE_EXTRA)" # optional override next to compose.live.yml, e.g. compose.shared-host.yml
+
 live_compose() { # IMAGE_TAG may be overridden through the environment for a single call
-  docker compose --project-directory "$ROOT" -f "$ROOT/compose.live.yml" --env-file "$LIVE_ENV" -p "$PROJECT" "$@"
+  local files=(-f "$ROOT/compose.live.yml")
+  [ -z "$EXTRA_COMPOSE" ] || files+=(-f "$ROOT/$EXTRA_COMPOSE")
+  docker compose --project-directory "$ROOT" "${files[@]}" --env-file "$LIVE_ENV" -p "$PROJECT" "$@"
 }
 
 pull_images() { # pull_images SERVICE... ; LIVE_SKIP_PULL=1 only for rehearsals with locally built images

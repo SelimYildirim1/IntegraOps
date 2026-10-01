@@ -21,12 +21,12 @@ export default async function FlowDetailPage({ params, searchParams }: { params:
   const fromTemplate = query.template === "1";
   if (!/^[a-z][a-z0-9-]{0,63}$/.test(flow)) notFound();
   let item: FlowDetails;
-  let canWrite = false;
+  let canWrite = false; let owner = false;
   const days = /^(7|14|30|60|90)$/.test(String(query.days)) ? Number(query.days) : 30;
   const test = ["exclude", "include", "only"].includes(String(query.test)) ? String(query.test) : "exclude";
   let advice: ThresholdAdvice | null = null; let aiStatus: AiStatus | null = null; let thresholdAnalyses: AiThresholdAnalysis[] = [];
   try {
-    item = await getFlow(flow); canWrite = (await getAccess()).role !== "viewer";
+    item = await getFlow(flow); const role = (await getAccess()).role; canWrite = role !== "viewer"; owner = role === "owner";
     // The allowance review is optional: a failure here must not hide the flow itself.
     [advice, aiStatus, thresholdAnalyses] = await Promise.all([
       api<ThresholdAdvice>(`/flows/${flow}/threshold-advice?` + new URLSearchParams({ days: String(days), test })).catch(() => null),
@@ -123,6 +123,19 @@ export default async function FlowDetailPage({ params, searchParams }: { params:
         </div>
         <Explain title="Örnek veri nasıl üretilir?">
           <p>Her örnek işlem gerçek kabul yolundan geçer: yaklaşık %60 zamanında tamamlanır, bir kısmı süreyi aşar, bir kısmı bir adımda takılır ya da hata bildirir, birkaçı iptal edilir. Süresi geçen adımlar için süre aşımı alarmları, hata bildirenler için hata alarmları açılır ve etkin bildirim kanallarına gider. Oluşturma zamanı seçilen döneme yayılır; raporlar ve eğilim grafikleri dolu görünür. Gerçek kaynak bağlandığında tek düğmeyle silinir.</p>
+        </Explain>
+      </div>
+    </section>}
+    {owner && <section className="surface">
+      <div className="surface-head"><div><h2>Akışı sil</h2><p>Artık izlemek istemediğiniz akışı kaldırır. Akışın sürümleri, {number(item.transactionCount ?? 0)} işlemi, bildirimleri, alarmları ve mutabakat geçmişi kalıcı olarak silinir; geri alınamaz.</p></div></div>
+      <div className="surface-body">
+        <ActionForm action={adminAction} label="Akışı kalıcı olarak sil" tone="danger" busy="Siliniyor…">
+          <input type="hidden" name="op" value="flow-delete" /><input type="hidden" name="flow" value={item.code} />
+          <div className="field"><label htmlFor="flow-delete-confirm">Onay için akış kodunu yazın: <span className="mono">{item.code}</span></label>
+            <input id="flow-delete-confirm" name="confirm" required maxLength={64} autoComplete="off" spellCheck={false} /></div>
+        </ActionForm>
+        <Explain title="Silmeden önce">
+          <p>Kaynak sistem bu akışa bildirim göndermeye devam ediyorsa önce gönderimi durdurun; silinen koda gelen bildirimler bilinmeyen akış olarak reddedilir. Kayıtları saklamak istiyorsanız silmeden önce organizasyon sayfasından dışa aktarım alın. Aynı kodla sonradan yeni bir akış oluşturabilirsiniz; eski kayıtlar geri gelmez.</p>
         </Explain>
       </div>
     </section>}

@@ -13,6 +13,26 @@ public sealed record DelayAssessment(
     public IReadOnlyList<PendingStep> PendingSteps => Pending ?? [];
 }
 
+/// <summary>
+/// A source that delivers an old event (outage recovery, replay, batch export) usually delivers the rest of the
+/// transaction moments later. Until it has had <see cref="Grace"/> to do so, no new alarm is opened; otherwise a
+/// replay opens and closes one alarm per step and floods the channels.
+/// </summary>
+public static class CatchUp
+{
+    public static TimeSpan LateAfter { get; set; } = TimeSpan.FromMinutes(5);
+    public static TimeSpan Grace { get; set; } = TimeSpan.FromMinutes(2);
+
+    /// <summary>When the most recently received event arrived late, the time until which new alarms wait; otherwise null.</summary>
+    public static DateTimeOffset? Until(IReadOnlyList<ObservedEvent> events, DateTimeOffset now)
+    {
+        if (events.Count == 0 || Grace <= TimeSpan.Zero) return null;
+        var last = events.MaxBy(e => e.ReceivedAt)!;
+        var until = last.ReceivedAt + Grace;
+        return last.ReceivedAt - last.OccurredAt >= LateAfter && now < until ? until : null;
+    }
+}
+
 public static class DelayEvaluator
 {
     public static DelayAssessment Evaluate(Projection projection, DateTimeOffset now, FlowDefinition? flow = null)

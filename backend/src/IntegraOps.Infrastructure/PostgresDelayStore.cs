@@ -18,7 +18,9 @@ public sealed class PostgresDelayStore(NpgsqlDataSource dataSource)
         await using (var find = Sql.Command(connection, transaction, """
             SELECT t.id, t.project_id, t.flow_version_id, t.group_code
             FROM transactions t LEFT JOIN transaction_delays d ON d.transaction_id = t.id
-            WHERE (t.alarm_checked_at IS NULL OR (t.status = 'InProgress'
+            WHERE (t.alarm_checked_at IS NULL
+              OR (d.state = 'catching_up' AND d.deadline_at <= clock_timestamp()) -- held alarms, failed ones included
+              OR (t.status = 'InProgress'
               AND (d.transaction_id IS NULL OR d.state = 'pending_processing' OR t.updated_at > d.checked_at
                    OR (d.state = 'waiting' AND d.deadline_at <= clock_timestamp()))))
               AND NOT EXISTS (
@@ -41,7 +43,7 @@ public sealed class PostgresDelayStore(NpgsqlDataSource dataSource)
             var events = await PostgresTrackingStore.LoadEventsAsync(connection, transaction,
                 candidate.ProjectId, candidate.Id, ct);
             await RefreshAsync(connection, transaction, flow, candidate.Id,
-                TimelineProjector.Project(flow, events, candidate.Group), ct);
+                TimelineProjector.Project(flow, events, candidate.Group), events, ct);
         }
         await transaction.CommitAsync(ct);
         return candidates.Count;
@@ -49,7 +51,7 @@ public sealed class PostgresDelayStore(NpgsqlDataSource dataSource)
 
     // Called inside the consumer's transaction as well as by the periodic scan.
     internal static async Task RefreshAsync(NpgsqlConnection connection, NpgsqlTransaction transaction,
-        FlowDefinition flow, Guid transactionId, Projection projection, CancellationToken ct)
+        FlowDefinition flow, Guid transactionId, Projection projection, IReadOnlyList<ObservedEvent> events, CancellationToken ct)
     {
         await using var pending = Sql.Command(connection, transaction, """
             SELECT EXISTS (SELECT 1 FROM transaction_events
@@ -62,6 +64,12 @@ public sealed class PostgresDelayStore(NpgsqlDataSource dataSource)
         var assessment = hasPendingEvents
             ? new DelayAssessment("pending_processing", null, null, null)
             : DelayEvaluator.Evaluate(projection, now, flow);
+
+        // Alarms first: when the source is still catching up and an alarm was held back, the stored state says so
+        // and deadline_at carries the time of the next check.
+        var catchUpUntil = CatchUp.Until(events, now);
+        if (await PostgresAlarmStore.Sync(connection, transaction, flow, transactionId, projection, assessment, now, ct, catchUpUntil is not null))
+            assessment = new DelayAssessment("catching_up", null, null, catchUpUntil);
 
         await using var update = Sql.Command(connection, transaction, """
             INSERT INTO transaction_delays
@@ -76,7 +84,6 @@ public sealed class PostgresDelayStore(NpgsqlDataSource dataSource)
             ("state", assessment.State), ("step", assessment.Step), ("startedAt", assessment.StartedAt),
             ("deadlineAt", assessment.DeadlineAt), ("checkedAt", now));
         await update.ExecuteNonQueryAsync(ct);
-        await PostgresAlarmStore.Sync(connection, transaction, flow, transactionId, projection, assessment, now, ct);
     }
 
     internal static async Task<DelayView> ReadAsync(NpgsqlConnection connection, NpgsqlTransaction transaction,
