@@ -221,7 +221,7 @@ public sealed class PostgresTrackingStore(NpgsqlDataSource dataSource) : ITracki
             WHERE id = @id AND project_id = @projectId
             """, ("status", projection.Status.ToString()), ("id", transactionId), ("projectId", pointer.ProjectId)))
             await update.ExecuteNonQueryAsync(ct);
-        await PostgresDelayStore.RefreshAsync(connection, transaction, flow, transactionId, projection, ct);
+        await PostgresDelayStore.RefreshAsync(connection, transaction, flow, transactionId, projection, events, ct);
         await FlowVersions.UpsertStepStatsAsync(connection, transaction, pointer.ProjectId, transactionId, flow, projection, ct);
         await transaction.CommitAsync(ct);
         return receivedAt;

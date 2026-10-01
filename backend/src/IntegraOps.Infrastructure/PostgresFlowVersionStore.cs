@@ -48,6 +48,7 @@ public sealed partial class PostgresFlowVersionStore(NpgsqlDataSource source)
             versions,
             hasDraft = versions.Any(v => (string)v["state"]! == "draft"),
             demoCount = (long)(await Value(c, null, "SELECT count(*) FROM transactions WHERE flow_id=@f AND business_id LIKE 'DEMO-%'", ct, ("f", flowId)))!,
+            transactionCount = (long)(await Value(c, null, "SELECT count(*) FROM transactions WHERE flow_id=@f", ct, ("f", flowId)))!,
         };
     }
 
@@ -206,6 +207,51 @@ public sealed partial class PostgresFlowVersionStore(NpgsqlDataSource source)
             throw new PilotHttpException(404, "Akış bu projede bulunamadı.");
         await Audit(c, tx, actor.ProjectId, actor.UserId, "flow.rename", code, ct);
         await tx.CommitAsync(ct);
+    }
+
+    /// <summary>
+    /// Removes a flow that is no longer monitored, with its versions, transactions, events, alarms, deliveries and
+    /// reconciliation history. Only the audit entry remains; later events for the code are rejected as an unknown flow.
+    /// </summary>
+    public async Task<object> Delete(ProjectIdentity actor, string code, CancellationToken ct)
+    {
+        await using var c = await source.OpenConnectionAsync(ct);
+        await using var tx = await c.BeginTransactionAsync(ct);
+        var flowId = await Value(c, tx, "SELECT id FROM flows WHERE project_id=@p AND code=@c FOR UPDATE", ct, ("p", actor.ProjectId), ("c", code)) as Guid?
+            ?? throw new PilotHttpException(404, "Akış bu projede bulunamadı.");
+        await Run(c, tx, "CREATE TEMP TABLE doomed ON COMMIT DROP AS SELECT t.id FROM transactions t WHERE t.project_id=@p AND t.flow_id=@f", ct,
+            ("p", actor.ProjectId), ("f", flowId));
+        var count = (int)(long)(await Value(c, tx, "SELECT count(*) FROM doomed", ct))!;
+        if (await Value(c, tx, "SELECT 1 FROM transaction_events e WHERE e.processed_at IS NULL AND e.transaction_id IN (SELECT id FROM doomed) LIMIT 1", ct) is not null)
+            throw new PilotHttpException(409, "Akışın bazı bildirimleri hâlâ işleniyor. Birkaç saniye sonra tekrar deneyin.");
+        try
+        {
+            await Run(c, tx, """
+                DELETE FROM notification_deliveries WHERE event_id IN (SELECT e.id FROM alarm_events e JOIN alarms a ON a.id=e.alarm_id WHERE a.transaction_id IN (SELECT id FROM doomed));
+                DELETE FROM alarm_events WHERE alarm_id IN (SELECT id FROM alarms WHERE transaction_id IN (SELECT id FROM doomed));
+                DELETE FROM alarm_notes WHERE alarm_id IN (SELECT id FROM alarms WHERE transaction_id IN (SELECT id FROM doomed));
+                DELETE FROM ai_analyses WHERE subject_kind='alarm' AND subject_id IN (SELECT id FROM alarms WHERE transaction_id IN (SELECT id FROM doomed));
+                DELETE FROM ai_analyses WHERE subject_kind='transaction' AND subject_id IN (SELECT id FROM doomed);
+                DELETE FROM ai_analyses WHERE subject_kind='threshold' AND subject_id=@f;
+                DELETE FROM alarms WHERE transaction_id IN (SELECT id FROM doomed);
+                DELETE FROM transaction_delays WHERE transaction_id IN (SELECT id FROM doomed);
+                DELETE FROM transaction_step_stats WHERE transaction_id IN (SELECT id FROM doomed);
+                DELETE FROM outbox_messages o USING transaction_events e WHERE e.project_id=o.project_id AND e.event_id=o.event_id AND e.transaction_id IN (SELECT id FROM doomed);
+                DELETE FROM transaction_events WHERE transaction_id IN (SELECT id FROM doomed);
+                DELETE FROM transactions WHERE id IN (SELECT id FROM doomed);
+                DELETE FROM reconciliation_discrepancies WHERE project_id=@p AND flow=@c;
+                DELETE FROM reconciliation_runs WHERE project_id=@p AND flow=@c;
+                DELETE FROM flow_versions WHERE flow_id=@f;
+                DELETE FROM flow_steps WHERE flow_id=@f;
+                DELETE FROM flows WHERE id=@f
+                """, ct, ("p", actor.ProjectId), ("c", code), ("f", flowId));
+        }
+        // A source that is still sending adds rows behind the statements above; nothing is removed in that case.
+        catch (PostgresException ex) when (ex.SqlState == PostgresErrorCodes.ForeignKeyViolation)
+        { throw new PilotHttpException(409, "Akışa şu anda bildirim geliyor. Kaynak sistemin gönderimini durdurup tekrar deneyin."); }
+        await Audit(c, tx, actor.ProjectId, actor.UserId, "flow.delete", $"{code}:{count}", ct);
+        await tx.CommitAsync(ct);
+        return new { flow = code, transactions = count };
     }
 
     public static IReadOnlyList<FlowStep> ValidateSteps(List<VersionStepInput>? input)

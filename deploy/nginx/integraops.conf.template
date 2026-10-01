@@ -1,0 +1,59 @@
+# IntegraOps behind a host nginx that is shared with another product (compose.shared-host.yml).
+# Render: sed -e "s/__PANEL_HOST__/panel.example.com/g" -e "s/__API_HOST__/api.example.com/g" \
+#             -e "s/__PANEL_PORT__/4000/g" -e "s/__API_PORT__/4001/g" integraops.conf.template \
+#           > /etc/nginx/sites-available/integraops
+# TLS:    certbot --nginx -d panel.example.com -d api.example.com   (adds the 443 listeners and redirects)
+
+upstream integraops_panel {
+    server 127.0.0.1:__PANEL_PORT__;
+    keepalive 16;
+}
+
+upstream integraops_api {
+    server 127.0.0.1:__API_PORT__;
+    keepalive 32;
+}
+
+server {
+    listen 80;
+    listen [::]:80;
+    server_name __PANEL_HOST__;
+
+    client_max_body_size 10m;
+
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+
+    location / {
+        proxy_pass http://integraops_panel;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_read_timeout 120s;
+    }
+}
+
+server {
+    listen 80;
+    listen [::]:80;
+    server_name __API_HOST__;
+
+    client_max_body_size 10m;
+
+    add_header X-Content-Type-Options "nosniff" always;
+
+    location / {
+        proxy_pass http://integraops_api;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header Connection "";
+        proxy_read_timeout 120s;
+    }
+}

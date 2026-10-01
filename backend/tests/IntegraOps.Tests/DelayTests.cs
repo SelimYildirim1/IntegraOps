@@ -20,6 +20,30 @@ public sealed class DelayTests
     private static DelayAssessment Check(int nowSeconds, params ObservedEvent[] events) =>
         DelayEvaluator.Evaluate(TimelineProjector.Project(Flow(), events), Start.AddSeconds(nowSeconds));
 
+    private static ObservedEvent Delivered(int occurredSeconds, int receivedSeconds) =>
+        new(Guid.NewGuid(), "erp-completed", EventStatus.Completed, Start.AddSeconds(occurredSeconds), Start.AddSeconds(receivedSeconds), null);
+
+    [Theory]
+    [InlineData(0, 2, 10, false)]        // delivered on time: alarms are never held
+    [InlineData(0, 299, 300, false)]     // just under the late threshold
+    [InlineData(0, 3600, 3610, true)]    // an hour old on arrival: hold while the source catches up
+    [InlineData(0, 3600, 3719, true)]
+    [InlineData(0, 3600, 3720, false)]   // grace is over; alarms open normally
+    public void Late_delivery_holds_new_alarms_only_during_the_grace(int occurred, int received, int now, bool held)
+    {
+        var until = CatchUp.Until([Delivered(occurred, received)], Start.AddSeconds(now));
+        Assert.Equal(held ? Start.AddSeconds(received) + CatchUp.Grace : null, until);
+    }
+
+    [Fact]
+    public void Catch_up_follows_the_most_recently_received_event()
+    {
+        // The replayed event arrived first; a live event received afterwards ends the hold.
+        Assert.Null(CatchUp.Until([Delivered(0, 3600), Delivered(3605, 3607)], Start.AddSeconds(3610)));
+        Assert.NotNull(CatchUp.Until([Delivered(3605, 3607), Delivered(0, 3650)], Start.AddSeconds(3660)));
+        Assert.Null(CatchUp.Until([], Start));
+    }
+
     [Fact]
     public void Approval_uses_its_own_hour_allowance()
     {

@@ -106,6 +106,8 @@ services:
       Panel__BaseUrl: ${PANEL_BASE_URL:-http://localhost:3000}   # alarm iletilerindeki "Panelde aç" bağlantısı
       Outbox__BatchSize: ${OUTBOX_BATCH_SIZE:-50}
       EventConsumer__Concurrency: ${EVENT_CONSUMER_CONCURRENCY:-1}
+      # Verification scripts send back-dated events and expect the alarm at once; live keeps the 120 s hold (docs/entegrasyon-sozlesmesi.md).
+      Alarms__CatchUpGraceSeconds: ${CATCH_UP_GRACE_SECONDS:-0}
       Smtp__Host: mailpit
       Smtp__Port: 1025
       Smtp__StartTls: "false"

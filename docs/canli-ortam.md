@@ -98,6 +98,24 @@ Sunucuda Docker Engine, Docker Compose v2, Python 3 ve git gerekir.
    sudo systemctl start integraops-backup.service && journalctl -u integraops-backup -n 20
    ```
 
+## Paylaşımlı sunucu
+
+Sunucuda başka bir ürün kendi nginx'i ile 80 ve 443 portlarını kullanıyorsa Caddy başlatılmaz. IntegraOps ayrı bir Compose projesi, ayrı ağ ve ayrı veritabanı ile çalışır; diğer ürünle yalnızca alan adı üzerinden HTTPS ile konuşur.
+
+1. `.env.live` içine şunlar eklenir. Portlar sunucuda boş olmalı ve yalnızca `127.0.0.1` üzerinde dinlenir:
+
+   ```bash
+   LIVE_COMPOSE_EXTRA=compose.shared-host.yml
+   PANEL_PORT=4000
+   API_PORT=4001
+   GRAFANA_PORT=4002
+   ```
+
+   `compose.shared-host.yml` ayrıca her servise CPU ve bellek sınırı koyar. `API_REPLICAS` 1 kalmalıdır.
+2. nginx sitesi `deploy/nginx/integraops.conf.template` dosyasından üretilir, `nginx -t` ile sınanır ve `systemctl reload nginx` ile yüklenir. Diğer ürünün site dosyalarına dokunulmaz.
+3. Sertifika `certbot --nginx -d PANEL_HOST -d API_HOST` ile alınır.
+4. Güvenlik duvarında yeni port açılmaz.
+
 ## Sürüm yayınlama
 
 1. Ana dalda CI yeşil olduktan sonra etiket oluşturun:

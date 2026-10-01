@@ -59,6 +59,14 @@ export async function adminAction(_previous: ActionState, data: FormData): Promi
         revalidatePath("/"); revalidatePath("/alarms"); revalidatePath("/reports"); revalidatePath(`/flows/view/${flowCode}`);
         message = r.transactions ? `${r.transactions} örnek işlem ve bağlı kayıtları silindi.` : "Silinecek örnek veri yoktu."; break;
       }
+      case "flow-delete": {
+        const flowCode = field("flow");
+        if (!/^[a-z][a-z0-9-]{0,63}$/.test(flowCode)) return { message: "Akış kodu geçersiz." };
+        if (field("confirm").trim() !== flowCode) return { message: "Onay için akış kodunu aynen yazın." };
+        await api(`/flows/${flowCode}`, "DELETE");
+        revalidatePath("/", "layout");
+        redirect(`/flows?${new URLSearchParams({ deleted: flowCode })}`);
+      }
       case "channel-create": result = await api("/channels", "POST", { name: field("name"), kind: field("kind"), target: field("target"), secret: field("secret") || null }); break;
       case "channel-toggle": await api(`/channels/${id}`, "PUT", { enabled: field("enabled") === "true" }); break;
       case "ack": await api(`/alarms/${id}/acknowledge`, "POST"); break;

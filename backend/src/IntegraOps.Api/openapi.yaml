@@ -241,6 +241,23 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/FlowDetails" }
         "404": { description: Akış yok }
+    delete:
+      tags: [Akışlar]
+      summary: Akışı sil
+      description: Akışı sürümleri, işlemleri, bildirimleri, alarmları ve mutabakat geçmişiyle birlikte kalıcı olarak siler; geri alınamaz. Yalnızca proje sahibi. Silinen koda sonradan gelen bildirimler bilinmeyen akış olarak reddedilir.
+      parameters: [{ $ref: "#/components/parameters/Flow" }]
+      responses:
+        "200":
+          description: Silindi
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  flow: { type: string }
+                  transactions: { type: integer, description: Akışla birlikte silinen işlem sayısı }
+        "404": { description: Akış yok }
+        "409": { description: Akışın bildirimleri hâlâ işleniyor ya da akışa bildirim geliyor }
   /api/v1/flows/{flow}/versions:
     post:
       tags: [Akışlar]
@@ -940,6 +957,7 @@ components:
         versions: { type: array, items: { type: object } }
         hasDraft: { type: boolean }
         demoCount: { type: integer, description: DEMO- önekli örnek işlem sayısı }
+        transactionCount: { type: integer, description: Akıştaki toplam işlem sayısı }
     FlowTemplate:
       type: object
       properties:
@@ -967,7 +985,7 @@ components:
         delay:
           type: [object, "null"]
           properties:
-            state: { type: string, enum: [none, waiting, overdue, pending_processing, pending_evaluation] }
+            state: { type: string, enum: [none, waiting, overdue, pending_processing, pending_evaluation, catching_up] }
             step: { type: [string, "null"] }
             startedAt: { type: [string, "null"], format: date-time }
             deadlineAt: { type: [string, "null"], format: date-time }

@@ -1,7 +1,7 @@
 export type TransactionStatus = "pending" | "inProgress" | "completed" | "failed" | "cancelled";
 export type StepKind = "required" | "optional" | "conditional";
 export const stepKindLabels: Record<StepKind, string> = { required: "Zorunlu", optional: "İsteğe bağlı", conditional: "Koşullu" };
-export type DelayState = "none" | "waiting" | "overdue" | "pending_processing" | "pending_evaluation";
+export type DelayState = "none" | "waiting" | "overdue" | "pending_processing" | "pending_evaluation" | "catching_up";
 
 export type DelayInfo = {
   state: DelayState;
