@@ -41,3 +41,21 @@ services:
   node-exporter:
     cpus: 0.25
     mem_limit: 128m
+  # Web database console at https://PANEL_HOST/db/ (deploy/nginx/integraops.conf.template). Off unless COMPOSE_PROFILES=dbui.
+  # Joins only this project's network; the preset connection uses a read-only role (docs/canli-ortam.md, "Veritabanı arayüzü").
+  cloudbeaver:
+    profiles: [dbui]
+    image: dbeaver/cloudbeaver:latest
+    restart: unless-stopped
+    environment:
+      CLOUDBEAVER_ROOT_URI: /db/
+      CLOUDBEAVER_APP_ANONYMOUS_ACCESS_ENABLED: "false"
+      CLOUDBEAVER_CORE_THEMING_THEME: dark
+      CB_SERVER_NAME: IntegraOps DB
+      CB_SERVER_URL: https://${PANEL_HOST:?Required}/db/
+      CB_ADMIN_NAME: ${CB_ADMIN_NAME:?Required}
+      CB_ADMIN_PASSWORD: ${CB_ADMIN_PASSWORD:?Required}
+    volumes: ["${LIVE_STATE_DIR:?Required}/cloudbeaver/workspace:/opt/cloudbeaver/workspace"]
+    ports: ["127.0.0.1:${DBUI_PORT:-4013}:8978"]
+    cpus: 0.5
+    mem_limit: 768m
