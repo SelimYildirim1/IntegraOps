@@ -116,6 +116,27 @@ Sunucuda başka bir ürün kendi nginx'i ile 80 ve 443 portlarını kullanıyors
 3. Sertifika `certbot --nginx -d PANEL_HOST -d API_HOST` ile alınır.
 4. Güvenlik duvarında yeni port açılmaz.
 
+### Veritabanı arayüzü
+
+Paylaşımlı sunucuda `https://PANEL_HOST/db/` adresinde CloudBeaver açılabilir. Servis `compose.shared-host.yml` içinde `dbui` profiliyle tanımlıdır ve yalnızca IntegraOps ağına bağlanır.
+
+1. `.env.live` içine `COMPOSE_PROFILES=dbui`, `CB_ADMIN_NAME` ve `CB_ADMIN_PASSWORD` yazılır. Şifrede büyük harf, küçük harf ve rakam olmalı, en az 8 karakter.
+2. Salt okunur rol açılır:
+
+   ```sql
+   CREATE ROLE integraops_ro LOGIN PASSWORD '...';
+   ALTER ROLE integraops_ro SET default_transaction_read_only = on;
+   GRANT CONNECT ON DATABASE integraops TO integraops_ro;
+   GRANT USAGE ON SCHEMA public TO integraops_ro;
+   GRANT SELECT ON ALL TABLES IN SCHEMA public TO integraops_ro;
+   ALTER DEFAULT PRIVILEGES FOR ROLE integraops IN SCHEMA public GRANT SELECT ON TABLES TO integraops_ro;
+   ```
+
+3. Hazır bağlantı `LIVE_STATE_DIR/cloudbeaver/workspace/GlobalConfiguration/.dbeaver/data-sources.json` dosyasına yazılır (sunucu `postgres`, kullanıcı `integraops_ro`). Dosyanın sahibi 8978 olur, izni 600.
+4. nginx'teki `/db/` bloğu yalnızca sahibin IP adresine açıktır ve `/etc/nginx/.htpasswd-integraops-db` ile ayrıca şifre ister. IP değişirse şablondaki `allow` satırı güncellenir.
+
+CloudBeaver yönetici şifresi yalnızca ilk açılışta uygulanır. Sonradan değiştirmek için arayüzü kullanın.
+
 ## Sürüm yayınlama
 
 1. Ana dalda CI yeşil olduktan sonra etiket oluşturun:
